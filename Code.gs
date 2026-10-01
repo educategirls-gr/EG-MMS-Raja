@@ -1265,13 +1265,16 @@ function sendOTP(email) {
   CacheService.getScriptCache().put('OTP_' + email, otp, OTP_EXPIRY_SEC);
 
   try {
+    // Rajasthan in the sender, subject and text: someone with UP access too
+    // gets codes from both systems and has to tell them apart.
     MailApp.sendEmail({
       to: email,
-      subject: 'EG Meeting Management System - Login OTP',
+      name: 'EG-MMS Rajasthan',
+      subject: 'EG Meeting Management System (Rajasthan) - Login OTP',
       body: 'Dear ' + employee.name + ',\n\n' +
-            'Your OTP for EG Meeting Management System is: ' + otp + '\n\n' +
+            'Your OTP for EG Meeting Management System, Rajasthan (raj.dataimpact.in) is: ' + otp + '\n\n' +
             'This OTP is valid for 10 minutes. Do not share it with anyone.\n\n' +
-            'Educate Girls Meeting Management System'
+            'Educate Girls Meeting Management System, Rajasthan'
     });
     return { success: true, message: 'OTP sent to: ' + email, name: employee.name };
   } catch (err) {
