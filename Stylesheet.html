@@ -1,0 +1,355 @@
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --red-dark:   #7B1010;
+    --red-mid:    #9B1C1C;
+    --red-light:  #B91C1C;
+    --white:      #FFFFFF;
+    --gray-light: #F5F5F5;
+    --gray-text:  #6B7280;
+    --border:     #E5E7EB;
+  }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* desktop only; overridden in @media below */
+  }
+
+  /* Top bar */
+  .topbar {
+    background: var(--red-dark);
+    color: var(--white);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    z-index: 10;
+  }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Left panel */
+  .left-panel {
+    flex: 1;
+    background: linear-gradient(145deg, var(--red-dark) 0%, var(--red-mid) 60%, var(--red-light) 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .left-panel::before {
+    content: '';
+    position: absolute;
+    width: 420px; height: 420px;
+    border-radius: 50%;
+    border: 60px solid rgba(255,255,255,0.06);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .left-panel::after {
+    content: '';
+    position: absolute;
+    width: 260px; height: 260px;
+    border-radius: 50%;
+    border: 40px solid rgba(255,255,255,0.08);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .logo-box {
+    background: var(--white);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin-bottom: 22px;
+    z-index: 1;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  }
+  .logo-box img { width: 160px; height: auto; object-fit: contain; display: block; }
+
+  .left-panel h1 {
+    color: var(--white);
+    font-size: 26px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 6px;
+    z-index: 1;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .left-panel .subtitle {
+    color: rgba(255,255,255,0.75);
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 36px;
+    z-index: 1;
+    line-height: 1.6;
+  }
+
+  .feature-list { z-index: 1; width: 100%; max-width: 320px; }
+  .feature-item {
+    background: rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-bottom: 10px;
+    color: var(--white);
+    backdrop-filter: blur(4px);
+  }
+  .feature-item .f-title { font-weight: 600; font-size: 14px; }
+  .feature-item .f-sub   { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+  .eg-btn {
+    border: 2px solid rgba(255,255,255,0.5);
+    color: var(--white);
+    background: transparent;
+    border-radius: 20px;
+    padding: 7px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 30px;
+    z-index: 1;
+    letter-spacing: 0.5px;
+  }
+
+  /* Right panel */
+  .right-panel {
+    width: 400px;
+    background: var(--white);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 48px 40px;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+  }
+
+  .right-panel h2 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 4px;
+  }
+  .right-panel .tagline {
+    font-size: 13px;
+    color: var(--gray-text);
+    margin-bottom: 28px;
+  }
+
+  .form-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .form-label .req { color: #DC2626; margin-left: 2px; }
+
+  .form-input {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 14px;
+    color: #111827;
+    outline: none;
+    transition: border 0.2s;
+    background: #FAFAFA;
+  }
+  .form-input:focus { border-color: var(--red-mid); background: var(--white); }
+  .form-input::placeholder { color: #9CA3AF; }
+
+  .hint {
+    font-size: 11.5px;
+    color: var(--gray-text);
+    margin-top: 5px;
+    margin-bottom: 20px;
+  }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--red-mid);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    letter-spacing: 0.5px;
+    margin-bottom: 20px;
+  }
+  .btn-primary:hover   { background: var(--red-dark); }
+  .btn-primary:active  { transform: scale(0.99); }
+  .btn-primary:disabled { background: #9CA3AF; cursor: not-allowed; }
+
+  .create-link {
+    text-align: center;
+    font-size: 13px;
+    color: var(--gray-text);
+  }
+  .create-link a { color: var(--red-mid); font-weight: 600; text-decoration: none; }
+  .create-link a:hover { text-decoration: underline; }
+
+  /* OTP box */
+  .otp-inputs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .otp-digit {
+    width: 48px; height: 52px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+    outline: none;
+    background: #FAFAFA;
+    transition: border 0.2s;
+  }
+  .otp-digit:focus { border-color: var(--red-mid); background: var(--white); }
+
+  .resend-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12.5px;
+    color: var(--gray-text);
+    margin-bottom: 20px;
+  }
+  .resend-row a { color: var(--red-mid); font-weight: 600; cursor: pointer; text-decoration: none; }
+
+  .alert {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .alert-error   { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
+  .alert-success { background: #F0FDF4; color: #166534; border: 1px solid #BBF7D0; }
+  .alert.show { display: block; }
+
+  .back-link {
+    font-size: 12.5px;
+    color: var(--gray-text);
+    cursor: pointer;
+    margin-bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .back-link:hover { color: var(--red-mid); }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .footer {
+    background: var(--red-dark);
+    color: rgba(255,255,255,0.6);
+    text-align: center;
+    font-size: 11.5px;
+    padding: 9px;
+  }
+
+  /* ── Mobile (JS-detected via html.eg-mobile class) ──────────────────── */
+
+  html.eg-mobile body {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  html.eg-mobile .topbar {
+    padding: 9px 16px;
+    font-size: 11.5px;
+  }
+
+  /* Stack: left panel on top as banner, right panel full-width below */
+  html.eg-mobile .main {
+    flex-direction: column;
+    overflow: visible;
+    flex: none;       /* Don't stretch to fill remaining viewport height */
+    height: auto;
+  }
+
+  /* Left panel = compact red banner */
+  html.eg-mobile .left-panel {
+    display: flex;
+    flex: none;
+    padding: 28px 24px 24px;
+  }
+
+  html.eg-mobile .left-panel::before { width: 260px; height: 260px; border-width: 36px; }
+  html.eg-mobile .left-panel::after  { width: 150px; height: 150px; border-width: 26px; }
+
+  html.eg-mobile .logo-box           { padding: 10px 14px; margin-bottom: 12px; }
+  html.eg-mobile .logo-box img       { width: 110px; }
+
+  html.eg-mobile .left-panel h1      { font-size: 19px; margin-bottom: 4px; }
+  html.eg-mobile .left-panel .subtitle { font-size: 12px; margin-bottom: 14px; }
+
+  html.eg-mobile .eg-btn             { padding: 6px 18px; font-size: 12px; margin-bottom: 0; }
+
+  /* Hide feature cards on mobile */
+  html.eg-mobile .feature-list       { display: none; }
+
+  /* Right panel: full width white section below banner, height = content only */
+  html.eg-mobile .right-panel {
+    width: 100%;
+    padding: 32px 24px 28px;
+    box-shadow: none;
+    justify-content: flex-start;
+    flex: none;
+    height: auto;
+  }
+
+  html.eg-mobile .right-panel h2     { font-size: 22px; }
+  html.eg-mobile .right-panel .tagline { margin-bottom: 20px; }
+
+  html.eg-mobile #otp-input {
+    font-size: 20px !important;
+    letter-spacing: 6px !important;
+  }
+
+  html.eg-mobile .btn-primary        { font-size: 14px; padding: 12px; }
+  html.eg-mobile .footer             { font-size: 10.5px; padding: 8px 12px; }
+
+  /* Also keep @media as fallback for browsers where JS runs late */
+  @media (max-width: 900px) {
+    body        { height: auto; min-height: 100vh; overflow-y: auto; overflow-x: hidden; }
+    .topbar     { padding: 9px 16px; font-size: 11.5px; }
+    .main       { flex-direction: column; overflow: visible; }
+    .left-panel { display: flex; flex: none; padding: 28px 24px 24px; }
+    .feature-list { display: none; }
+    .right-panel  { width: 100%; padding: 32px 24px 28px; box-shadow: none; justify-content: flex-start; }
+    .btn-primary  { font-size: 14px; padding: 12px; }
+    .footer       { font-size: 10.5px; padding: 8px 12px; }
+  }
+</style>

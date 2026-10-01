@@ -1,0 +1,9 @@
+docs/**
+.git/**
+*.md
+.claspignore
+build-pages.js
+*.sh
+scripts/**
+.github/**
+.claude/**
