@@ -1715,7 +1715,7 @@ function sendMeetingFeedback(session, meetingId, text) {
       replyTo: session.email,     // and so does a plain Reply
       subject: subj,
       htmlBody: body,
-      name: 'EG-MMS'
+      name: 'EG-MMS Rajasthan'
     });
   } catch (e) {
     return { success:false, message:'The email could not be sent: ' + e.message };
@@ -3344,7 +3344,7 @@ function sendColleagueNotification(data, mtgId) {
       '<img src="https://www.educategirls.ngo/wp-content/themes/egindia/static/images/eg-logo.png" ' +
            'style="height:34px;filter:brightness(0) invert(1);opacity:0.9;margin-bottom:12px;display:block;" />' +
       '<h2 style="color:#fff;margin:0 0 4px;font-size:19px;font-weight:700;">Meeting Invitation</h2>' +
-      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations</p>' +
+      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations, Rajasthan</p>' +
     '</div>' +
 
     // Greeting
@@ -3414,7 +3414,7 @@ function sendColleagueNotification(data, mtgId) {
     '<div style="background:#7B1010;padding:14px 28px;text-align:center;">' +
       '<p style="color:rgba(255,255,255,0.65);font-size:11.5px;margin:0;">' +
         'This is a system-generated notification from <strong style="color:#fff;">EG Meeting Management System</strong>.<br>' +
-        'Educate Girls &nbsp;|&nbsp; Government Relations Team' +
+        'Educate Girls &nbsp;|&nbsp; Government Relations Team, Rajasthan' +
       '</p>' +
     '</div>' +
 
@@ -3422,6 +3422,7 @@ function sendColleagueNotification(data, mtgId) {
 
   MailApp.sendEmail({
     to:       colleague.email,
+    name:     'EG-MMS Rajasthan',
     subject:  subject,
     htmlBody: body
   });
@@ -3453,7 +3454,7 @@ function sendMOMNotification(data, momUrl, photoFolderUrl, followUpId) {
       '<img src="https://www.educategirls.ngo/wp-content/themes/egindia/static/images/eg-logo.png" ' +
            'style="height:34px;filter:brightness(0) invert(1);opacity:0.9;margin-bottom:12px;display:block;" />' +
       '<h2 style="color:#fff;margin:0 0 4px;font-size:19px;font-weight:700;">Minutes of Meeting (MoM)</h2>' +
-      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations</p>' +
+      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations, Rajasthan</p>' +
     '</div>' +
 
     // Greeting
@@ -3530,7 +3531,7 @@ function sendMOMNotification(data, momUrl, photoFolderUrl, followUpId) {
     '<div style="background:#7B1010;padding:14px 28px;text-align:center;">' +
       '<p style="color:rgba(255,255,255,0.65);font-size:11.5px;margin:0;">' +
         'This is a system-generated notification from <strong style="color:#fff;">EG Meeting Management System</strong>.<br>' +
-        'Educate Girls &nbsp;|&nbsp; Government Relations Team' +
+        'Educate Girls &nbsp;|&nbsp; Government Relations Team, Rajasthan' +
       '</p>' +
     '</div>' +
 
@@ -3538,6 +3539,7 @@ function sendMOMNotification(data, momUrl, photoFolderUrl, followUpId) {
 
   MailApp.sendEmail({
     to:       colleague.email,
+    name:     'EG-MMS Rajasthan',
     subject:  subject,
     htmlBody: body
   });
@@ -5448,7 +5450,7 @@ function sendEscalations(mode, limit) {
     var cc = (mode==='live') ? seniors.join(',') : '';
     var subj = 'Escalation: '+(data[i][26]||'Follow-up')+' - '+(data[i][1]||'')+' meeting';
     if (mode !== 'live') subj = '[TEST -> officer:'+email+' | CC senior:'+(seniors.join(',')||'NONE FOUND')+'] '+subj;
-    var opts = { to:to, subject:subj, htmlBody:html, name:'EG-MMS Alerts' };
+    var opts = { to:to, subject:subj, htmlBody:html, name:'EG-MMS Rajasthan Alerts' };
     if (cc) opts.cc = cc;
     try {
       MailApp.sendEmail(opts);
@@ -5741,7 +5743,7 @@ function sendWeeklyNudges(mode) {
     var to = (mode === 'live') ? o.email : REPORT_TEST_EMAIL;
     try {
       MailApp.sendEmail({
-        to: to, name: 'EG-MMS', htmlBody: buildWeeklyReminder_(o, range),
+        to: to, name: 'EG-MMS Rajasthan', htmlBody: buildWeeklyReminder_(o, range),
         subject: (mode !== 'live' ? '[TEST -> ' + o.email + '] ' : '') +
                  'Your meetings this week: ' + o.meetings.length + ' (' + range + ')'
       });
@@ -5972,7 +5974,7 @@ function buildReportEmailHtml(rep, recipientName) {
   return '<div style="margin:0;padding:24px 12px;background:#f4f2ef;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">'+
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;">'+
     '<tr><td style="padding:28px 30px 16px;border-bottom:2px solid #7B1010;">'+
-      '<div style="font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#7B1010;">Educate Girls &middot; Government Relations</div>'+
+      '<div style="font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#7B1010;">Educate Girls &middot; Government Relations &middot; Rajasthan</div>'+
       '<h1 style="'+SERIF+'font-size:25px;line-height:1.12;margin:9px 0 5px;color:#1f2937;">Monthly GR Meetings Report</h1>'+
       '<div style="font-size:14px;color:#6b7280;"><b style="color:#1f2937;">'+_emailEsc(sc.label)+'</b> &middot; '+_emailEsc(sc.month)+'</div></td></tr>'+
     '<tr><td style="padding:18px 30px 0;font-size:13px;color:#6b7280;">Dear '+_emailEsc(recipientName||'Colleague')+', here is your '+_emailEsc(sc.kind)+'-level summary for '+_emailEsc(sc.month)+'.</td></tr>'+
@@ -6005,7 +6007,7 @@ function sendMonthlyReports(mode, monthOverride, roleFilter) {
           .getAs('application/pdf')
           .setName('GR-Report-' + rep.scope.label.replace(/[^A-Za-z0-9]+/g,'-') + '-' + rep.scope.month.replace(/\s/g,'') + '.pdf'));
       } catch(pe) { /* PDF optional - send without it if conversion fails */ }
-      MailApp.sendEmail({ to:to, subject:'Monthly GR Report - ' + rep.scope.label + ' - ' + rep.scope.month, htmlBody:html, name:'EG-MMS Reports', attachments:attach });
+      MailApp.sendEmail({ to:to, subject:'Monthly GR Report - ' + rep.scope.label + ' - ' + rep.scope.month, htmlBody:html, name:'EG-MMS Rajasthan Reports', attachments:attach });
       sent.push(to + ' [' + r.role + ': ' + (r.role==='State'?'RJ':r.role==='Zone'?r.zone:r.district) + ']');
     } catch(e){ failed.push(r.email + ' ' + e.message); }
   });
