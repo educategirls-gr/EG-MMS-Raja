@@ -376,7 +376,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.5 &middot; 2 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.6 &middot; 2 Oct 2026</span>
   </div>
 </div>
 
@@ -616,7 +616,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.5 &middot; 2 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.6 &middot; 2 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -1983,8 +1983,15 @@
         }).join('') + '</tbody></table>';
   }
 
-  // Designations excluded from Profile Coverage (non-field / internal roles)
+  // Designations left out of Profile Coverage: internal and test profiles.
+  // Anything starting "Test" is the developer's own login (Test User, Testing
+  // Head), there to try things out, so neither the person nor their meetings
+  // count (2 Oct 2026: "Test User" was showing, the list only had Testing Head).
   var _covExclude = { 'testing head': 1 };
+  function _covExcluded(desig) {
+    var d = (desig || '').toString().trim().toLowerCase();
+    return !!_covExclude[d] || /^test/.test(d);
+  }
   // ── Profile Coverage ──
   function renderCoverage(f, dist) {
     var covEl = document.getElementById('pf-coverage');
@@ -1998,7 +2005,7 @@
     f.forEach(function(m){ if (m.employeeName) active[_normNm(m.employeeName)] = 1; });
     // Team members in scope (respect the district filter; drop excluded profiles)
     var emps = _allEmployees.filter(function(e){
-      if (_covExclude[_normDg(e.designation).toLowerCase()]) return false;
+      if (_covExcluded(_normDg(e.designation))) return false;
       return !dist || (e.district || '').toUpperCase() === dist.toUpperCase();
     });
     // name → designation (from master) so meeting counts group by the master's profile
@@ -2015,7 +2022,7 @@
     });
     f.forEach(function(m){
       var d = nameDesig[_normNm(m.employeeName)] || _normDg(m.post);
-      if (_covExclude[d.toLowerCase()]) return;   // skip excluded profiles' meetings
+      if (_covExcluded(d)) return;   // skip excluded profiles' meetings
       bucket(d).meetings++;
     });
     var arr = Object.keys(cov).map(function(k){
