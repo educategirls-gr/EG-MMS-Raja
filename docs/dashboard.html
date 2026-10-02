@@ -550,7 +550,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.4 &middot; 2 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.5 &middot; 2 Oct 2026</div>
   </div>
 </div>
 
@@ -3853,12 +3853,26 @@
     var mid = _fbMid;
     closeFeedbackModal();
     showToast('Sending your feedback...');
-    gasPost('sendMeetingFeedback', { meetingId: mid, text: txt }, function(res) {
+    // One id for this feedback however many times it is sent. A lost reply
+    // ("Failed to fetch") often means the email went anyway; asking again with
+    // the same id gets the server's answer without a second email.
+    var reqId = 'fb' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    sendFeedbackTry(mid, txt, reqId, 3);
+  }
+  function sendFeedbackTry(mid, txt, reqId, triesLeft) {
+    function again() {
+      if (triesLeft > 1) {
+        showToast('No reply yet. Checking whether your feedback went...', 9000);
+        setTimeout(function() { sendFeedbackTry(mid, txt, reqId, triesLeft - 1); }, 6000);
+      } else {
+        showToast('Could not confirm that your feedback was sent. You are copied on it, so check your inbox before sending it again.', 12000);
+      }
+    }
+    gasPost('sendMeetingFeedback', { meetingId: mid, text: txt, reqId: reqId }, function(res) {
       if (res && res.success) showToast('Sent to ' + (res.sentTo || 'the officer') + '. Their reply will come to your inbox.');
+      else if (res && res.message === 'IN_PROGRESS') again();
       else showToast('Not sent: ' + ((res && res.message) || 'unknown error'));
-    }, function(e) {
-      showToast('Not sent: ' + e.message);
-    });
+    }, again);
   }
   // The rows are redrawn on every filter change, so the handler goes on the
   // container once rather than on each button.
@@ -4853,6 +4867,8 @@
     'Please write your feedback first.': 'कृपया पहले अपनी प्रतिक्रिया लिखें।',
     'Something went wrong, please close this and try again.': 'कुछ गड़बड़ हुई, कृपया इसे बंद करके पुनः प्रयास करें।',
     'Sending your feedback...': 'आपकी प्रतिक्रिया भेजी जा रही है...',
+    'No reply yet. Checking whether your feedback went...': 'अभी उत्तर नहीं आया। जाँच हो रही है कि आपकी प्रतिक्रिया गई या नहीं...',
+    'Could not confirm that your feedback was sent. You are copied on it, so check your inbox before sending it again.': 'पक्का नहीं हो सका कि आपकी प्रतिक्रिया भेजी गई। इसकी प्रति आपको भी जाती है, इसलिए दोबारा भेजने से पहले अपना इनबॉक्स देख लें।',
 
     // Connection trouble
     'Server is busy. Please try again in a moment.': 'सर्वर व्यस्त है। कृपया कुछ क्षण बाद पुनः प्रयास करें।',

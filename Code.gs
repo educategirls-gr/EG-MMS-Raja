@@ -680,7 +680,7 @@ function apiResponse(e, method) {
                                                                                   : { success:false, message:'BODY_MISSING' };
         else if (action === 'transcribeVoice')             result = body.audio ? transcribeVoice(session, body.audio, body.mime || '')
                                                                                : { success:false, message:'BODY_MISSING' };
-        else if (action === 'sendMeetingFeedback')         result = (body.meetingId && body.text) ? sendMeetingFeedback(session, body.meetingId, body.text)
+        else if (action === 'sendMeetingFeedback')         result = (body.meetingId && body.text) ? sendMeetingFeedback(session, body.meetingId, body.text, body.reqId)
                                                                                                : { success:false, message:'BODY_MISSING' };
         else if (action === 'getDashboardStats')    result = getDashboardStats(session.email, e.parameter.all === '1', resolveActiveDistrict_(session, e.parameter.district));
         else if (action === 'getDistrictReport') {
@@ -1657,7 +1657,21 @@ function getDropdownData(email) {
 //
 // The officer's address is looked up here from the meeting id rather than sent
 // up by the browser, so the page never has to hold anyone's email.
-function sendMeetingFeedback(session, meetingId, text) {
+// Each feedback carries a request id from the page. A reply can be lost on the
+// way back while the email has gone (2 Oct 2026: "Not sent: Failed to fetch",
+// and the email arrived), so the page sends the same feedback again with the
+// same id. The id is remembered here: 'pending' while sending, then who it went
+// to, for half an hour. A repeat is answered without a second email.
+var FEEDBACK_SEEN_SECS = 1800;
+function sendMeetingFeedback(session, meetingId, text, reqId) {
+  var seenKey = reqId ? 'fbsent_' + reqId.toString().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60) : '';
+  var seenCache = CacheService.getScriptCache();
+  if (seenKey) {
+    var seen = null;
+    try { seen = seenCache.get(seenKey); } catch (e) {}
+    if (seen === 'pending') return { success:false, message:'IN_PROGRESS' };
+    if (seen) return { success:true, sentTo:seen, repeat:true };
+  }
   meetingId = (meetingId || '').toString().trim();
   text      = (text || '').toString().trim();
   if (!meetingId) return { success:false, message:'No meeting id' };
@@ -1718,6 +1732,7 @@ function sendMeetingFeedback(session, meetingId, text) {
       _emailEsc(from) + ' is on it and will get your reply.</p>' +
     '</div>';
 
+  if (seenKey) { try { seenCache.put(seenKey, 'pending', 120); } catch (e) {} }
   try {
     MailApp.sendEmail({
       to: m.email,
@@ -1728,9 +1743,12 @@ function sendMeetingFeedback(session, meetingId, text) {
       name: 'EG-MMS ' + STATE_NAME
     });
   } catch (e) {
+    if (seenKey) { try { seenCache.remove(seenKey); } catch (e2) {} }
     return { success:false, message:'The email could not be sent: ' + e.message };
   }
-  return { success:true, sentTo:m.officer || m.email };
+  var sentTo = m.officer || m.email;
+  if (seenKey) { try { seenCache.put(seenKey, sentTo, FEEDBACK_SEEN_SECS); } catch (e) {} }
+  return { success:true, sentTo:sentTo };
 }
 
 // ------------------------------------------------------------
