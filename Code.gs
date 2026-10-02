@@ -2167,7 +2167,22 @@ function noteLooksFake_(text) {
   return '';
 }
 
+// One save of a meeting at a time. A save with a MoM can outlast the browser's
+// patience; the page then asks again or the officer presses Save again, and a
+// second save that started before the first had written its row would file the
+// meeting twice. While one is running, another for the same meeting is told so
+// and the page waits for the first (2 Oct 2026). Five minutes, inside the six an
+// execution may run, so a crashed save cannot block the meeting for long.
+var CONDUCT_LOCK_SECS = 300;
 function conductMeeting(payload) {
+  var key = 'conducting_' + ((payload && payload.meetingId) || '').toString().trim();
+  var cache = CacheService.getScriptCache();
+  try { if (cache.get(key)) return { success: false, message: 'IN_PROGRESS' }; cache.put(key, '1', CONDUCT_LOCK_SECS); } catch (e) {}
+  try { return conductMeetingNow_(payload); }
+  finally { try { cache.remove(key); } catch (e) {} }
+}
+
+function conductMeetingNow_(payload) {
   try {
     if (sheetBreakerTripped_()) return { success: false, message: SHEET_BUSY_MSG };
     var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -2178,27 +2193,9 @@ function conductMeeting(payload) {
     // was refusing real conducts and costing more than it caught. Judging the
     // notes is back to being a training matter, not the software's job.
 
-    // A note reused word for word from an earlier meeting tells us nothing
-    // about this one, and no length rule catches it: a pasted template can run
-    // to several hundred characters. Checked here rather than in the browser so
-    // it cannot be skipped. Compares only this officer's own notes.
-    try {
-      var incoming = (payload.keyPoints || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
-      if (incoming.length >= 40) {
-        var cSh = ss.getSheetByName(CONDUCTED_SHEET);
-        if (cSh) {
-          var cdAll = cSh.getDataRange().getValues();
-          var mine = (payload.email || '').toString().trim().toLowerCase();
-          for (var dI = cdAll.length - 1; dI >= 1 && dI > cdAll.length - 200; dI--) {
-            if ((cdAll[dI][4] || '').toString().trim().toLowerCase() !== mine) continue;
-            var prev = (cdAll[dI][15] || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
-            if (prev && prev === incoming) {
-              return { success:false, message:'DUPLICATE_NOTE' };
-            }
-          }
-        }
-      }
-    } catch (dupErr) { /* never block a genuine conduct because this check failed */ }
+    // What the officer writes is saved as written. The check that refused a note
+    // repeated word for word from an earlier meeting was removed on 2 Oct 2026 at
+    // Alok's request, as the note quality check was on 17 Sep.
 
     // ── Already recorded ──────────────────────────────────────
     // One meeting, one conducted record. When the front door was slow the

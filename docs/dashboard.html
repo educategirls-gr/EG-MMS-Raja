@@ -550,7 +550,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.3 &middot; 2 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.4 &middot; 2 Oct 2026</div>
   </div>
 </div>
 
@@ -1965,8 +1965,9 @@
     var kp   = kpo.text;
     if (!date) { showModalAlert('conduct', 'Please select a conduct date.'); return; }
     if (date > dayStr()) { showModalAlert('conduct', 'A meeting cannot be conducted on a future date. Please pick the day it actually happened.'); return; }
-    if (kpo.what.length < 20) { showModalAlert('conduct', 'Please write a little more in question 1, at least a full sentence.'); return; }
-    if (kpo.said.length < 20) { showModalAlert('conduct', 'Please write a little more in question 2. What the official said is the part that matters most.'); return; }
+    // What the officer writes is saved as written, however short (2 Oct 2026).
+    // Only a record with nothing in it at all is stopped.
+    if (!kp) { showModalAlert('conduct', 'Please write what happened in the meeting.'); return; }
     var outcome = document.getElementById('c-outcome').value;
     if (!outcome) { showModalAlert('conduct', 'Please choose what came out of this meeting.'); return; }
 
@@ -1992,7 +1993,8 @@
     clearModalAlert('conduct');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>' + (allFiles.length ? 'Preparing photos...' : 'Generating MoM...');
-    if (allFiles.length === 0) { doSendConduct(m, date, btn, kp, [], followUp, outcome); return; }
+    var momWin = openMomWindow();
+    if (allFiles.length === 0) { doSendConduct(m, date, btn, kp, [], followUp, outcome, momWin); return; }
     var photos = [], shrunk = 0;
     allFiles.forEach(function(f) {
       compressPhoto(f, function(p) {
@@ -2001,11 +2003,12 @@
         // Nothing usable came back from any of them: say so rather than filing
         // the meeting silently without its photos.
         if (!photos.length) {
+          closeMomWindow(momWin);
           btn.disabled = false; btn.innerHTML = momBtnLabel();
           showModalAlert('conduct', 'The photos could not be read. Please pick them again.');
           return;
         }
-        doSendConduct(m, date, btn, kp, photos, followUp, outcome);
+        doSendConduct(m, date, btn, kp, photos, followUp, outcome, momWin);
       });
     });
   }
@@ -2058,7 +2061,20 @@
     var b = document.getElementById('conduct-submit-btn');
     if (b && !b.disabled) b.innerHTML = momBtnLabel();
   }
-  function doSendConduct(m, date, btn, kp, photos, followUp, outcome) {
+  // The MoM opens in a tab of its own. The tab is opened on the tap itself,
+  // while it still counts as the officer's own action, or the browser blocks it
+  // as a pop-up; the document is loaded into it once the server has written it.
+  function openMomWindow() {
+    if (!(document.getElementById('c-make-mom') || {}).checked) return null;
+    try {
+      var w = window.open('', '_blank');
+      if (w) w.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#374151;">Generating the MoM document...</p>');
+      return w || null;
+    } catch (e) { return null; }
+  }
+  function closeMomWindow(w) { try { if (w && !w.closed) w.close(); } catch (e) {} }
+
+  function doSendConduct(m, date, btn, kp, photos, followUp, outcome, momWin) {
     var wantMom = (document.getElementById('c-make-mom') || {}).checked;
     btn.innerHTML = '<span class="spinner"></span>' + (wantMom ? 'Generating MoM...' : 'Saving...');
     var time = getPickerTime('ct-h', 'ct-m', 'ct-ap');
@@ -2075,6 +2091,8 @@
       followUp: followUp || null
     }, function(res) {
       btn.disabled = false; btn.innerHTML = momBtnLabel();
+      if (res.success && momWin && res.momUrl) { try { momWin.location.href = res.momUrl; } catch (e) {} }
+      else closeMomWindow(momWin);
       if (res.success) {
         clearConductDraft(m.meetingId);
         invalidateFrontCache();
@@ -2082,8 +2100,11 @@
         if (res.photoError) showToast('⚠️ Photo upload failed: ' + res.photoError, 6000);
         showConductSuccess(res.momUrl, res.photoFolderUrl, res.followUpId, followUp);
         loadManageMeetings(true);
-      } else if (res.message === 'POOR_NOTE') {
-        showModalAlert('conduct', 'This does not read like a record of a real meeting, ' + (res.reason || 'it says very little') + '. Nothing has been saved, so please write what actually happened and save again.');
+      } else if (res.message === 'IN_PROGRESS') {
+        // An earlier tap is still being saved on the server: wait for that one.
+        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking...';
+        showModalAlert('conduct', 'This meeting is still being saved. Checking in a moment...');
+        setTimeout(function() { checkConductLanded(m, btn, 2); }, 8000);
       } else if (res.message === 'ALREADY_CONDUCTED') {
         // The earlier save did land, the browser just never heard back. Finish
         // the way a success finishes, so nobody is left staring at an error
@@ -2093,14 +2114,42 @@
         closeActionModal();
         showToast('This meeting was already recorded, so it was not saved a second time.', 6000);
         loadManageMeetings(true);
-      } else if (res.message === 'DUPLICATE_NOTE') {
-        showModalAlert('conduct', 'This note is word for word the same as one of your earlier meetings. Please write what actually happened in this one.');
       } else { showModalAlert('conduct', res.message || 'An error occurred.'); }
     }, function(e) {
-      btn.disabled = false; btn.innerHTML = momBtnLabel();
+      // No reply is not the same as "not saved": the server often finishes after
+      // the connection has given up. On 2 Oct 2026 a conduct with a MoM was filed
+      // while this said it had failed, and the list this tab kept still showed
+      // the meeting as planned. So drop the kept lists and look first.
+      closeMomWindow(momWin);
+      invalidateFrontCache();
       saveConductDraft();
-      showModalAlert('conduct', 'Could not save. What you typed is safe, so try again when you have signal. If you close the app it will still be here.');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Checking...';
+      showModalAlert('conduct', 'No reply from the server yet. Checking whether the meeting was saved...');
+      setTimeout(function() { checkConductLanded(m, btn, 2); }, 8000);
     });
+  }
+
+  // After a lost reply: is this meeting conducted now? Then finish as a save
+  // finishes. Not yet: look again, then say it did not save, with what was
+  // typed kept. Pressing Save again cannot file it twice (ALREADY_CONDUCTED,
+  // and IN_PROGRESS while the first save is still running).
+  function checkConductLanded(m, btn, triesLeft) {
+    function notYet() {
+      if (triesLeft > 0) { setTimeout(function() { checkConductLanded(m, btn, triesLeft - 1); }, 10000); return; }
+      btn.disabled = false; btn.innerHTML = momBtnLabel();
+      showModalAlert('conduct', 'Could not save. What you typed is safe, so try again when you have signal. If you close the app it will still be here.');
+    }
+    gasFetch('getMyMeetings', { email: SESSION.email }, function(list) {
+      var row = (list || []).filter(function(x) { return x.meetingId === m.meetingId; })[0];
+      if (!row || row.status !== 'Conducted') { notYet(); return; }
+      btn.disabled = false; btn.innerHTML = momBtnLabel();
+      clearConductDraft(m.meetingId);
+      if (MODAL_IDX >= 0 && _manageMeetings[MODAL_IDX] === m) closeActionModal();
+      _manageCache = { data: list, ts: Date.now() };
+      writeStoredManage(list);
+      renderManageMeetings(list);
+      showToast('The meeting was saved; the reply was only slow. Its MoM is in My Meetings.', 8000);
+    }, notYet);
   }
   function showConductSuccess(momUrl, photoUrl, followUpId, followUp) {
     var body = document.querySelector('#success-modal .modal-body');
@@ -4732,6 +4781,11 @@
     'Save & Generate MoM': 'सहेजें और कार्यवृत्त बनाएँ',
     'Preparing photos...': 'फ़ोटो तैयार हो रहे हैं...',
     'Generating MoM...': 'कार्यवृत्त बन रहा है...',
+    'Checking...': 'जाँच हो रही है...',
+    'Please write what happened in the meeting.': 'कृपया लिखें कि बैठक में क्या हुआ।',
+    'This meeting is still being saved. Checking in a moment...': 'यह बैठक अभी सहेजी जा रही है। थोड़ी देर में जाँच होगी...',
+    'No reply from the server yet. Checking whether the meeting was saved...': 'सर्वर से अभी उत्तर नहीं आया। जाँच हो रही है कि बैठक सहेजी गई या नहीं...',
+    'The meeting was saved; the reply was only slow. Its MoM is in My Meetings.': 'बैठक सहेज ली गई है, बस उत्तर देर से आया। इसका कार्यवृत्त मेरी बैठकें में है।',
     'Please select a conduct date.': 'कृपया बैठक होने की तिथि चुनें।',
     'A meeting cannot be conducted on a future date. Please pick the day it actually happened.':
       'भविष्य की तिथि पर बैठक संपन्न नहीं हो सकती। कृपया वह दिन चुनें जब बैठक वास्तव में हुई।',
