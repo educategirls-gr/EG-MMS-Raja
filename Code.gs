@@ -3871,6 +3871,21 @@ function _geminiText_(j) {
   return '';
 }
 
+// Ollama Cloud, the third provider. A free ollama.com account has a small
+// monthly allowance on a few listed cloud models, one request at a time. The
+// key is Script Property OLLAMA_KEY, and OLLAMA_MODEL can name another free
+// model (gpt-oss:120b, say) without a deploy. No key means it is never called.
+var OLLAMA_DEFAULT_MODEL = 'gemma4:31b';
+function ollamaModel_(props) { return (props.getProperty('OLLAMA_MODEL') || OLLAMA_DEFAULT_MODEL).trim(); }
+function ollamaFetch_(key, model, prompt) {
+  return UrlFetchApp.fetch('https://ollama.com/api/chat', {
+    method:'post', contentType:'application/json', muteHttpExceptions:true,
+    headers:{ Authorization:'Bearer ' + key },
+    payload: JSON.stringify({ model:model, messages:[{role:'user', content:prompt}], stream:false, options:{ temperature:0.3 } })
+  });
+}
+function ollamaText_(j) { return (j && j.message && j.message.content) || ''; }
+
 // callLLM hides every failure on purpose so features degrade quietly. This does
 // the opposite: it sends a trivial prompt to each provider and reports exactly
 // what came back, so a dead key, a wrong model name or a quota block is visible.
@@ -3906,17 +3921,42 @@ function LLM_probe() {
     } catch(e) { out.gemini_threw = e.message; }
   }
 
+  var ok = props.getProperty('OLLAMA_KEY');
+  out.ollama_key   = ok ? ('present, length ' + ok.length) : 'MISSING';
+  out.ollama_model = ollamaModel_(props);
+  if (ok) {
+    try {
+      var r3 = ollamaFetch_(ok, out.ollama_model, 'Reply with the single word OK.');
+      out.ollama_httpCode = r3.getResponseCode();
+      var j3 = {}; try { j3 = JSON.parse(r3.getContentText() || '{}'); } catch (pe) {}
+      out.ollama_extractedText = ollamaText_(j3) || '(nothing extracted)';
+      out.ollama_reply = r3.getContentText().substring(0, 400);
+    } catch(e) { out.ollama_threw = e.message; }
+  }
+
   Logger.log(JSON.stringify(out, null, 2));
   return out;
 }
 
-// Both providers fail temporarily under load: Mistral answers 429 (free-tier
-// rate limit) and Gemini answers 503 (model busy). Both clear within seconds,
-// so try each provider, wait, and go round again before giving up.
+// Providers fail temporarily under load: Mistral answers 429 (free-tier rate
+// limit) and Gemini answers 503 (model busy). Both clear within seconds, so try
+// each provider, wait, and go round again before giving up. Ollama Cloud is the
+// last resort, for when Gemini is down and the Mistral allowance (shared with
+// UP) has run out.
 function callLLM(prompt) {
   var props = PropertiesService.getScriptProperties();
   var mk = props.getProperty('MISTRAL_KEY');
   var gk = props.getProperty('GEMINI_KEY');
+  var ok = props.getProperty('OLLAMA_KEY');
+
+  function ollama() {
+    if (!ok) return '';
+    try {
+      var r3 = ollamaFetch_(ok, ollamaModel_(props), prompt);
+      if (r3.getResponseCode() === 200) return ollamaText_(JSON.parse(r3.getContentText()));
+    } catch(e) {}
+    return '';
+  }
 
   function mistral() {
     if (!mk) return '';
@@ -3967,6 +4007,7 @@ function callLLM(prompt) {
     if (waits[a]) Utilities.sleep(waits[a]);
     var g = gemini();  if (g) return g;   // Gemini first: Mistral's free tier runs out
     var t = mistral(); if (t) return t;
+    var o = ollama();  if (o) return o;   // Ollama last: its free allowance is small
   }
   return '';
 }
