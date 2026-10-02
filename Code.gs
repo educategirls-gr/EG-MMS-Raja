@@ -796,7 +796,7 @@ function authorizeApp() {
 //  and get the new DRIVE_ROOT_ID to paste in Code.gs
 // ------------------------------------------------------------
 function setupDriveFolder() {
-  var folderName = 'EG-GR-Meetings';
+  var folderName = 'EG-GR-Meetings ' + STATE_NAME;
   var root = DriveApp.getRootFolder();
   var it = root.getFoldersByName(folderName);
   var folder = it.hasNext() ? it.next() : root.createFolder(folderName);
@@ -2106,13 +2106,15 @@ function getOrCreateFolder(parent, name) {
   return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
-// Auto-find or create root meetings folder in script owner's Drive
+// The state's own meetings folder, opened by its id. This used to look up a
+// folder named EG-GR-Meetings in the owner's Drive, which is UP's: Rajasthan
+// runs as the same account, so its photos, minutes and documents went into
+// UP's folder, and searching the Drive root by name, then resetting the
+// folder's sharing, cost a second or two on every save (found 2 Oct 2026).
+// The folder's own sharing is left as set in Drive; each meeting folder and
+// file is shared view-only by link where it is made.
 function getRootMeetingsFolder() {
-  var name = 'EG-GR-Meetings';
-  var root = DriveApp.getRootFolder();
-  var folder = getOrCreateFolder(root, name);
-  try { folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(e) {}
-  return folder;
+  return DriveApp.getFolderById(DRIVE_ROOT_ID);
 }
 
 // ------------------------------------------------------------
@@ -2527,15 +2529,12 @@ function createMoMDoc(d, photoFolderUrl) {
   var file = DriveApp.getFileById(doc.getId());
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  if (photoFolderUrl) {
-    try {
-      var root  = getRootMeetingsFolder();
-      var distF = getOrCreateFolder(root, d.district || 'General');
-      var mtgF  = getOrCreateFolder(distF, d.meetingId);
-      mtgF.addFile(file);
-      DriveApp.getRootFolder().removeFile(file);
-    } catch(e) {}
-  }
+  // Filed in the meeting's own folder, photos or not. Without photos it used
+  // to stay loose in the root of the owner's Drive.
+  try {
+    var distF = getOrCreateFolder(getRootMeetingsFolder(), d.district || 'General');
+    file.moveTo(getOrCreateFolder(distF, d.meetingId));
+  } catch(e) {}
   return doc.getUrl();
 }
 
