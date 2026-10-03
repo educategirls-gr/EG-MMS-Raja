@@ -4446,8 +4446,12 @@ function askAllMeetings_() {
            post:(xc[c][10]||'').toString().trim(), purpose:(xc[c][11]||'').toString().trim(),
            reason:askOneLine_(xc[c][15]) });
   }
-  var out = [];
-  for (var key in byId) { byId[key].email = emailOf[key] || ''; out.push(byId[key]); }
+  var out = [], testE = testEmailsFrom_(sheetRows_(EMPLOYEE_SHEET) || []);
+  for (var key in byId) {
+    byId[key].email = emailOf[key] || '';
+    if (testE[byId[key].email]) continue;   // the developer's test meetings
+    out.push(byId[key]);
+  }
   return out;
 }
 
@@ -6165,6 +6169,34 @@ function removeMonthlyTrigger() {
 //  EMPLOYEE MASTER (public) - name/designation/district/block only
 //  (no email/role). Powers the coverage & active/inactive reports.
 // ------------------------------------------------------------
+// The developer's own login carries a designation starting "Test". Its
+// meetings are test data: they stay in the sheet and in the app's own lists,
+// and are left out of everything the open portal, the monthly report and the
+// chatbot count (3 Oct 2026). Who is a test profile comes from Employee_DB.
+function isTestDesignation_(d) { return /^test/i.test((d || '').toString().trim()); }
+function testEmailsFrom_(empRows) {
+  var out = {};
+  for (var i = 1; i < (empRows || []).length; i++) {
+    if (!isTestDesignation_(empRows[i][3])) continue;
+    var e = (empRows[i][4] || '').toString().trim().toLowerCase();
+    if (e) out[e] = 1;
+  }
+  return out;
+}
+// Meeting ids filed by a test profile. Every meeting starts as a plan row and
+// a conducted row carries the email too, so the two sheets cover them all.
+function testMeetingIds_(testEmails) {
+  var ids = {};
+  if (!Object.keys(testEmails || {}).length) return ids;
+  [MEETINGS_SHEET, CONDUCTED_SHEET].forEach(function(name) {
+    var rows = sheetRows_(name) || [];
+    for (var i = 1; i < rows.length; i++) {
+      if (testEmails[(rows[i][4] || '').toString().trim().toLowerCase()]) ids[(rows[i][0] || '').toString().trim()] = 1;
+    }
+  });
+  return ids;
+}
+
 function getEmployeeMaster() {
   try {
     var cacheKey = 'empMaster';
@@ -6179,6 +6211,7 @@ function getEmployeeMaster() {
       for (var i = 1; i < data.length; i++) {
         var name = (data[i][2] || '').toString().trim();
         if (!name) continue;
+        if (isTestDesignation_(data[i][3])) continue;   // the developer's test login
         out.employees.push({
           name:        name,
           designation: (data[i][3] || '').toString().trim(),
@@ -6202,9 +6235,10 @@ function getReportData() {
 
     // email → block map
     var emp = ss.getSheetByName(EMPLOYEE_SHEET);
-    var blockMap = {};
+    var blockMap = {}, testEmails = {};
     if (emp) {
       var ed = (sheetRows_(EMPLOYEE_SHEET) || []);
+      testEmails = testEmailsFrom_(ed);
       for (var i = 1; i < ed.length; i++) {
         var em = (ed[i][4] || '').toString().trim().toLowerCase();
         if (em) blockMap[em] = (ed[i][1] || '').toString().trim(); // B = Block
@@ -6294,6 +6328,10 @@ function getReportData() {
     // conducted rows for the same meeting. Counting them flat made the portal's
     // district, team and stakeholder pages disagree with its own Overview,
     // which reads the current state of each meeting from the plan sheet.
+    // The developer's test meetings stay out of the portal and the reports.
+    var testIds = testMeetingIds_(testEmails);
+    meetings = meetings.filter(function(m) { return !testIds[(m.meetingId || '').toString().trim()]; });
+
     var STATUS_RANK = { 'Conducted':4, 'Cancelled':3, 'Postponed':2, 'Follow-up':1, 'Planned':1 };
     var byId = {}, idOrder = [];
     meetings.forEach(function(m) {
@@ -6468,6 +6506,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
     var planSheet = ss.getSheetByName(MEETINGS_SHEET);
     var planData  = (planSheet && planSheet.getLastRow() > 1) ? (sheetRows_(MEETINGS_SHEET) || []) : [];
 
+    var testE   = testEmailsFrom_(sheetRows_(EMPLOYEE_SHEET) || []);   // the developer's test meetings are left out
     var distMap = {};   // district → {total,conducted,planned,cancelled,postponed}
     var typeMap = {};
     var purpMap = {};
@@ -6482,6 +6521,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       var dateV  = row[5];
 
       if (!isState && dist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+      if (testE[(row[4] || '').toString().trim().toLowerCase()]) continue;
 
       var dKey = dist.charAt(0).toUpperCase() + dist.slice(1).toLowerCase();
       if (!distMap[dKey]) distMap[dKey] = {total:0,conducted:0,planned:0,cancelled:0,postponed:0};
@@ -6549,6 +6589,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
         var cr      = cd[ci];
         var cdist   = (cr[1]||'').toString().trim();
         if (!isState && cdist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+        if (testE[(cr[4] || '').toString().trim().toLowerCase()]) continue;
         var cEmp    = (cr[2] ||'').toString().trim();
         var cType   = (cr[8] ||'').toString().trim();
         var cStkP   = (cr[10]||'').toString().trim();
@@ -6564,6 +6605,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
         if (!(rr[0] || '').toString().trim()) continue;   // trailing blank rows are not meetings
         var rdist = (rr[1]||'').toString().trim();
         if (!isState && rdist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+        if (testE[(rr[4] || '').toString().trim().toLowerCase()]) continue;
         recent.push({
           meetingId:       (rr[0] ||'').toString(),
           district:        (rr[1] ||'').toString(),
