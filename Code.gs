@@ -3670,7 +3670,13 @@ function getMonthlyReport(session, monthParam) {
       return Object.keys(g).map(function(k){ var r=g[k]; return { name:r.name, planned:r.planned, conducted:r.conducted, pct:pct(r.conducted,r.planned), activeStaff:activeIn(r.list) }; });
     }
     var breakdown = { by:'', rows:[], leaderboard:[] };
-    if (scopeKind === 'state') {
+    if (scopeKind === 'state' && Object.keys(ZONE_DISTRICTS).length <= 1) {
+      // No zones (Rajasthan): the one group would make a one-row "by zone"
+      // table, followed by a district leaderboard saying what that row hides.
+      // The state is broken down by district instead, as a zone report is.
+      breakdown.by = 'district';
+      breakdown.rows = groupBy(function(m){ return m.district || '-'; }).sort(function(a,b){ return b.conducted - a.conducted; });
+    } else if (scopeKind === 'state') {
       breakdown.by = 'zone';
       var zg = {};
       mm.forEach(function(m){ var z = districtToZone_(m.district) || 'State'; if (!zg[z]) zg[z] = { name:z, planned:0, conducted:0, list:[] }; zg[z].planned++; zg[z].list.push(m); if (m.status==='Conducted') zg[z].conducted++; });
@@ -3805,9 +3811,9 @@ function getMonthlyReport(session, monthParam) {
     if (pending) attention.push({ level:'warn', title:pending + ' follow-ups / planned meetings pending', detail:'Open in ' + month });
     if (conducted.length && govtMom < conducted.length) attention.push({ level:'warn', title:'Govt MoM pending on ' + (conducted.length - govtMom) + ' of ' + conducted.length, detail:'Only ' + govtMom + ' conducted meetings have official minutes uploaded' });
     if (relationships.coldCount) attention.push({ level:'warn', title:relationships.coldCount + ' offices with no contact in ' + COLD_DAYS + '+ days', detail:relationships.cold.slice(0,4).map(function(r){ return r.post + ' ' + r.district + ' (' + r.daysSince + 'd)'; }).join(', ') + (relationships.coldCount > 4 ? ' +more' : '') });
-    if (scopeKind === 'state' && breakdown.rows.length) {
+    if (scopeKind === 'state' && breakdown.rows.length > 1) {
       var worst = breakdown.rows.slice().sort(function(a,b){ return a.pct - b.pct; })[0];
-      if (worst) attention.push({ level:'warn', title:worst.name + ' is the lowest-performing zone (' + worst.pct + '%)', detail:worst.conducted + ' of ' + worst.planned + ' conducted' });
+      if (worst) attention.push({ level:'warn', title:worst.name + ' is the lowest-performing ' + breakdown.by + ' (' + worst.pct + '%)', detail:worst.conducted + ' of ' + worst.planned + ' conducted' });
     }
 
     // ── Narrative (Phase 1 template - grounded in the numbers) ──
@@ -6126,6 +6132,22 @@ function REPORT_clearNarrative(month) {
   return keys.length;
 }
 function REPORT_STATE_live()   { return sendMonthlyReports('live', null, 'State'); }   // real send to State people only
+
+// The month so far, to REPORT_TEST_EMAIL only, so a report can be seen before
+// the 1st (the other test runs take the just-completed month). The AI wording
+// written for this month is cleared afterwards, so a test late in the month
+// can never stand in for the real report's summary.
+function thisMonthKey_() { var d = new Date(); return _RPT_MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
+function REPORT_TEST_thisMonth() {      // the State report for this month, to the test address
+  var res = sendMonthlyReports('test', thisMonthKey_(), 'State');
+  REPORT_clearNarrative(thisMonthKey_());
+  return res;
+}
+function REPORT_TEST_thisMonthAll() {   // every lead's report for this month, all to the test address
+  var res = sendMonthlyReports('test', thisMonthKey_());
+  REPORT_clearNarrative(thisMonthKey_());
+  return res;
+}
 
 function installMonthlyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction() === 'monthlyReportJob') ScriptApp.deleteTrigger(t); });
