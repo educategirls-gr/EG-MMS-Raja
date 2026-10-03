@@ -5438,7 +5438,7 @@ function ESC_preview() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(CONDUCTED_SHEET);
   if (!sh) return { success:false, message:'no sheet' };
   var data = sh.getDataRange().getValues();
-  var skip = { notTagged:0, alreadySent:0, resolved:0, nothingToEscalate:0 };
+  var skip = { notTagged:0, alreadySent:0, resolved:0, nothingToEscalate:0, testProfile:0 };
   var list = [];
   for (var i = 1; i < data.length; i++) {
     if (!data[i][0]) continue;
@@ -5449,6 +5449,9 @@ function ESC_preview() {
     var escY = (data[i][COL_TAG_ESC-1]||'').toString();
     if (flag === 'Resolved') { skip.resolved++; continue; }
     if (!(prio === 'High' || flag === 'Blocked' || escY === 'Yes')) { skip.nothingToEscalate++; continue; }
+    // Same rule as the live run: the developer's test profile never escalates.
+    var pe = getEmployeeByEmail((data[i][4]||'').toString().trim().toLowerCase());
+    if (pe && /^test/i.test((pe.designation || '').toString().trim())) { skip.testProfile++; continue; }
     list.push({ row:i+1, id:data[i][0], officer:(data[i][2]||'').toString(),
                 district:(data[i][1]||'').toString(), priority:prio, flag:flag, escalate:escY,
                 nextAction:(data[i][COL_TAG_NEXT-1]||'').toString(),
@@ -5483,6 +5486,11 @@ function sendEscalations(mode, limit) {
     if (!email) continue;
     var emp = getEmployeeByEmail(email.toLowerCase());
     if (!emp) continue;
+    // The developer's own test profile (a designation starting "Test") never
+    // escalates for real: its meetings would otherwise reach the State Head, who
+    // is copied on every escalation. Test mode still shows them, since those
+    // emails go to the admin only (2 Oct 2026).
+    if (mode === 'live' && /^test/i.test((emp.designation || '').toString().trim())) continue;
     var seniors = findSenior_(emp, recips);
     // findSenior_ answers who sits above someone, and above a zone lead is the
     // whole state team. That is the right answer to that question and the
