@@ -223,8 +223,13 @@ function ROWS_status() {
 }
 
 function invalidateUser(email, district) {
+  // Dashboard stats are cached per view as 'stats_<email>_<all>_<district>'
+  // (getDashboardStats); clearing 'stats_<email>_0' and '_1' never matched
+  // one, so totals stayed stale after every save (found 3 Oct 2026). The
+  // writer's own views are cleared here, by district below, and the open
+  // portal's ('stats__1_', email empty).
   var keys = ['emp_' + email,
-       'stats_' + email + '_0', 'stats_' + email + '_1',
+       'stats_' + email + '_0_', 'stats_' + email + '_1_', 'stats__0_', 'stats__1_',
        'rep_' + email,
        'mymt_' + email, 'allmymt_' + email,
        'mymtg_' + email, 'planmtg_' + email,
@@ -248,12 +253,39 @@ function invalidateUser(email, district) {
       if (!k || seen[k]) return;
       seen[k] = 1;
       keys.push('distMtg_' + k);            // matches getDistrictAllMeetings
+      keys.push('stats_' + email + '_0_' + k, 'stats_' + email + '_1_' + k);
       var z = districtToZone_(x);
       if (z) keys.push('zoneMtg_' + z);     // matches getZoneAllMeetings
     });
   } catch (e) { /* the user's own keys are cleared either way */ }
   cDel.apply(null, keys);
   sheetRowsDropAll_();   // the shared sheet copies too, or a write would stay invisible
+}
+
+// Editor helper: run after editing the sheet by hand (deleting test rows,
+// fixing a name). The app clears its caches on every save it makes itself,
+// but it cannot see an edit made straight in the sheet, so that shows only as
+// the caches expire, up to fifteen minutes. This clears every one at once:
+// the shared sheet copies, the portal's data, and each person's lists and
+// dashboard views. Changes nothing in the sheet.
+function CACHE_clearAll() {
+  var keys = ['reportData', 'empMaster', 'allEmp', 'stateMtg_all', 'docUrlMap', 'meetingZoneMap', 'stats__0_', 'stats__1_'];
+  var dists = allDistrictNames_().map(function(d) { return d.toLowerCase(); });
+  dists.forEach(function(d) { keys.push('distMtg_' + d, 'distEmp_' + d); });
+  for (var z in ZONE_DISTRICTS) keys.push('zoneMtg_' + z);
+  var people = Object.keys(empMirrorRead_() || {});
+  people.forEach(function(e) {
+    keys.push('emp_' + e, 'rep_' + e, 'mymt_' + e, 'allmymt_' + e, 'mymtg_' + e, 'planmtg_' + e);
+    ['0', '1'].forEach(function(f) {
+      keys.push('stats_' + e + '_' + f + '_');
+      dists.forEach(function(d) { keys.push('stats_' + e + '_' + f + '_' + d); });
+    });
+  });
+  for (var i = 0; i < keys.length; i += 100) cDel.apply(null, keys.slice(i, i + 100));
+  sheetRowsDropAll_();
+  Logger.log('Cleared ' + keys.length + ' cached entries for ' + people.length + ' people, and the shared sheet copies. ' +
+             'Everyone sees the sheet as it is now on their next refresh.');
+  return keys.length;
 }
 
 // ------------------------------------------------------------
