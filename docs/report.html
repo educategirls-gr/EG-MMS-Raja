@@ -288,7 +288,7 @@
       /* Icon only, so the page name has room to be read rather than clipped. */
       .btn-refresh-txt { display: none; }
       select#rp-district-sel { min-width: 100%; }
-      select#rp-month-sel { min-width: 100%; }
+      select#rp-month-sel, select#rp-dept-sel { min-width: 100%; }
       .district-select-wrap { flex-direction: column; align-items: stretch; }
     }
 
@@ -376,7 +376,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.9 &middot; 6 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.10 &middot; 6 Oct 2026</span>
   </div>
 </div>
 
@@ -451,6 +451,12 @@
           </div>
         </div>
 
+        <!-- The same post sits in several departments, so this is the office-level view -->
+        <div class="card" style="margin-bottom:18px;">
+          <div class="card-title">Meetings by Department<span class="card-title-line"></span></div>
+          <div id="ov-depts" style="overflow-x:auto;"></div>
+        </div>
+
         <div class="card">
           <div class="card-title">Recently Conducted Meetings<span class="card-title-line"></span></div>
           <div id="ov-recent" style="overflow-x:auto;"></div>
@@ -473,6 +479,9 @@
           <select id="rp-month-sel" class="rp-sel" onchange="applyReportFilters()">
             <option value="">All Months</option>
           </select>
+          <select id="rp-dept-sel" class="rp-sel" onchange="applyReportFilters()">
+            <option value="">All Departments</option>
+          </select>
           <div id="rp-sel-loading" style="display:none;color:#9CA3AF;font-size:13px;font-weight:600;">
             <span class="spinner" style="width:18px;height:18px;border-width:2px;vertical-align:middle;margin-right:6px;"></span>Loading…
           </div>
@@ -494,6 +503,12 @@
         <div class="card" id="rp-byblock-card" style="margin-bottom:18px;display:none;">
           <div class="card-title">Block-wise Meeting Breakdown <span style="font-weight:400;color:#9CA3AF;text-transform:none;letter-spacing:0;font-size:11px;">(click a block to drill down)</span><span class="card-title-line"></span></div>
           <div id="rp-byblock" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"></div>
+        </div>
+
+        <!-- Department-wise breakdown: every meeting in the selection, by the official's department -->
+        <div class="card" id="rp-bydept-card" style="margin-bottom:18px;display:none;">
+          <div class="card-title">Department-wise Meeting Breakdown <span style="font-weight:400;color:#9CA3AF;text-transform:none;letter-spacing:0;font-size:11px;">(click a department to see only its meetings)</span><span class="card-title-line"></span></div>
+          <div id="rp-bydept" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"></div>
         </div>
 
         <!-- Post-wise breakdown -->
@@ -578,6 +593,9 @@
           <select id="rel-block" onchange="renderRelations()">
             <option value="">All Blocks</option>
           </select>
+          <select id="rel-dept" onchange="renderRelations()">
+            <option value="">All Departments</option>
+          </select>
           <select id="rel-status" onchange="renderRelations()">
             <option value="">All Offices</option>
             <option value="cold">Gone quiet only</option>
@@ -588,7 +606,7 @@
           <div id="rel-loading" style="display:none;color:#9CA3AF;font-size:13px;font-weight:600;">Loading…</div>
         </div>
         <div style="font-size:12px;color:#9CA3AF;margin-top:10px;">
-          Tracked by office rather than by person, since officials get transferred. Reads the full meeting history.
+          Tracked by office (the post within its department) rather than by person, since officials get transferred. Reads the full meeting history.
         </div>
       </div>
 
@@ -616,7 +634,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.9 &middot; 6 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.10 &middot; 6 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -986,6 +1004,26 @@
              '<div style="font-size:15px;font-weight:800;color:'+EG+';flex-shrink:0;">'+pu.count+'</div></div>';
     }).join('') || '<div style="color:#9CA3AF;font-size:13px;">No data</div>';
 
+    // ─ Department table: planned and conducted per department ─
+    var depts = d.byDepartment || [];
+    var deptBox = document.getElementById('ov-depts');
+    if (deptBox) {
+      var maxDc = depts.reduce(function(m,x){ return Math.max(m, x.conducted||0); }, 1);
+      deptBox.innerHTML = (depts.length === 0
+        ? '<div style="color:#9CA3AF;font-size:13px;padding:12px 0;">No meeting has a department yet</div>'
+        : '<table class="rep-table"><thead><tr><th>Department</th><th style="text-align:right;">Meetings</th>' +
+          '<th style="text-align:right;">Conducted</th><th style="width:34%;"></th></tr></thead><tbody>' +
+          depts.map(function(x) {
+            return '<tr><td><strong>'+esc(x.name)+'</strong></td>' +
+                   '<td style="text-align:right;color:#6B7280;">'+x.total+'</td>' +
+                   '<td style="text-align:right;font-weight:800;color:#065F46;">'+x.conducted+'</td>' +
+                   '<td><div class="prog-wrap"><div class="prog-fill" style="width:'+Math.round((x.conducted/maxDc)*100)+'%;background:'+EG+';"></div></div></td></tr>';
+          }).join('') + '</tbody></table>') +
+        (d.deptNotRecorded ? '<div style="font-size:11px;color:#9CA3AF;margin-top:8px;">' + d.deptNotRecorded +
+          ' meeting' + (d.deptNotRecorded === 1 ? ' was' : 's were') + ' planned before the department was asked and ' +
+          (d.deptNotRecorded === 1 ? 'is' : 'are') + ' not counted here.</div>' : '');
+    }
+
     // ─ Types as chips with bars ─
     var types  = d.byType || [];
     var maxT   = types.reduce(function(m,x){ return Math.max(m,x.count||0); },1);
@@ -1013,7 +1051,8 @@
           return '<tr><td style="white-space:nowrap;font-size:11.5px;font-weight:600;">'+esc(r.conductDate)+'</td>' +
                  '<td><span style="font-weight:600;">'+esc(distLabel(r.district))+'</span></td>' +
                  '<td><strong>'+esc(r.stakeholderName)+'</strong></td>' +
-                 '<td style="font-size:11px;color:#6B7280;">'+esc(r.stakeholderPost)+'</td>' +
+                 '<td style="font-size:11px;color:#6B7280;">'+esc(r.stakeholderPost)+
+                   (r.department ? '<br><span style="font-size:10px;color:#1D4ED8;">'+esc(r.department)+'</span>' : '')+'</td>' +
                  '<td>'+esc(r.employeeName)+'</td>' +
                  '<td style="font-size:11px;color:#6B7280;">'+esc(r.post)+'</td>' +
                  '<td>'+esc(r.purpose)+'</td>' +
@@ -1261,13 +1300,15 @@
     return _relBlockPosts;
   }
 
-  function relBuild(pick, pickBlock) {
+  function relBuild(pick, pickBlock, pickDept) {
     var now = Date.now(), map = {}, blockPosts = relBlockLevelPosts();
     (_allMeetings || []).forEach(function(m) {
       if (m.status !== 'Conducted') return;
       if (distMiss(pick, m.district)) return;
       var mBlock = String(m.stakeholderBlock || m.block || '').trim();
       if (pickBlock && mBlock !== pickBlock) return;
+      var dept = String(m.department || '').trim();
+      if (pickDept && dept !== pickDept) return;
       // Keyed on the POST, not the person. Officers get transferred, but the
       // office carries the relationship: the BSA of a district stays the BSA.
       var post = String(m.stakeholderPost || '').trim();
@@ -1279,8 +1320,9 @@
       // Block level posts are one office PER BLOCK, so the block joins the key.
       var isBlockPost = !!blockPosts[relNorm(post)];
       var keyBlock = isBlockPost ? relNorm(mBlock) : '';
-      var k = relNorm(m.district) + '|' + pk + (keyBlock ? '|' + keyBlock : '');
-      var r = map[k] || (map[k] = { post:(post || person), district:String(m.district||'').trim(),
+      // The same post exists in several departments, so the department joins the key.
+      var k = relNorm(m.district) + '|' + relNorm(dept) + '|' + pk + (keyBlock ? '|' + keyBlock : '');
+      var r = map[k] || (map[k] = { post:(post || person), department:dept, district:String(m.district||'').trim(),
                                     block:(isBlockPost ? mBlock : ''), blockLevel:isBlockPost,
                                     lastPerson:'', people:{}, count:0, last:0, first:ts, purpose:'' });
       r.count++;
@@ -1334,8 +1376,9 @@
       var dist = String(m.district || '').trim();
       if (!post || !dist) return;
       districts[dist] = (districts[dist] || 0) + 1;
-      var pk = relNorm(post);
-      (byPost[pk] = byPost[pk] || { label:post, districts:{} }).districts[relNorm(dist)] = 1;
+      var dept = String(m.department || '').trim();
+      var pk = relNorm(dept) + '|' + relNorm(post);
+      (byPost[pk] = byPost[pk] || { label:post + (dept ? ' (' + dept + ')' : ''), districts:{} }).districts[relNorm(dist)] = 1;
       (byDistrict[dist] = byDistrict[dist] || {})[pk] = 1;
     });
     var expected = Object.keys(byPost)
@@ -1352,27 +1395,34 @@
     }).sort(function(a,b){ return b.missingCount - a.missingCount; });
   }
 
-  // Only the blocks that actually appear for the chosen district.
-  function relFillBlocks(pick) {
-    var sel = document.getElementById('rel-block');
+  // Only the blocks and departments that actually appear for the chosen district.
+  function relFillSel(id, allLabel, field) {
+    var sel = document.getElementById(id);
     if (!sel) return;
-    var want = {};
+    var pick = dsGet('rel-district'), want = {};
     (_allMeetings || []).forEach(function(m) {
       if (m.status !== 'Conducted') return;
       if (distMiss(pick, m.district)) return;
-      var b = String(m.stakeholderBlock || m.block || '').trim();
-      if (b) want[b] = 1;
+      var v = String(field(m) || '').trim();
+      if (v) want[v] = 1;
     });
     var list = Object.keys(want).sort();
     var sig = pick + '::' + list.join('|');
     if (sel.getAttribute('data-sig') === sig) return;   // unchanged, keep the selection
     var keep = sel.value;
-    sel.innerHTML = '<option value="">All Blocks</option>';
+    sel.innerHTML = '<option value="">' + allLabel + '</option>';
     list.forEach(function(b) {
       var o = document.createElement('option'); o.value = b; o.textContent = b; sel.appendChild(o);
     });
     if (list.indexOf(keep) >= 0) sel.value = keep;
     sel.setAttribute('data-sig', sig);
+  }
+  function relFillBlocks() { relFillSel('rel-block', 'All Blocks', function(m){ return m.stakeholderBlock || m.block; }); }
+  function relFillDepts()  { relFillSel('rel-dept', 'All Departments', function(m){ return m.department; }); }
+  function relOfficeCell(r) {
+    return '<strong>'+esc(r.post)+'</strong>' +
+      (r.department ? '<br><span style="font-size:10px;color:#1D4ED8;">'+esc(r.department)+'</span>' : '') +
+      (r.block ? '<br><span style="font-size:10px;color:#6B7280;">'+esc(r.block)+' block</span>' : '');
   }
 
   function renderRelations() {
@@ -1382,9 +1432,11 @@
     var pick = dsGet('rel-district');
     var only = document.getElementById('rel-status').value;
     renderOutcomes('rel-outcomes', pick);
-    relFillBlocks(pick);
+    relFillBlocks();
+    relFillDepts();
     var pickBlock = (document.getElementById('rel-block') || {}).value || '';
-    var all = relBuild(pick, pickBlock);
+    var pickDept  = (document.getElementById('rel-dept') || {}).value || '';
+    var all = relBuild(pick, pickBlock, pickDept);
     var cold = all.filter(function(r){ return r.state === 'cold'; });
     var once = all.filter(function(r){ return r.count === 1; });
     var deep = all.filter(function(r){ return r.count >= 3; });
@@ -1430,7 +1482,7 @@
         chEl.innerHTML = '<div style="overflow-x:auto;"><table class="rep-table"><thead><tr>' +
           '<th>Office</th><th>District</th><th>Earlier</th><th>Now</th><th>Last Contact</th></tr></thead><tbody>' +
           changed.sort(function(a,b){ return b.days - a.days; }).map(function(r) {
-            return '<tr><td>' + '<strong>'+esc(r.post)+'</strong>'+(r.block?'<br><span style="font-size:10px;color:#6B7280;">'+esc(r.block)+' block</span>':'') + '</td>' +
+            return '<tr><td>' + relOfficeCell(r) + '</td>' +
               '<td>'+esc(distLabel(r.district))+'</td>' +
               '<td style="font-size:11.5px;color:#9CA3AF;text-decoration:line-through;">'+esc(r.prevPerson || '-')+'</td>' +
               '<td style="font-size:11.5px;font-weight:700;color:#1D4ED8;">'+esc(r.lastPerson || '-')+'</td>' +
@@ -1455,7 +1507,7 @@
         return '<tr>' +
           '<td style="white-space:nowrap;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+dot[r.state]+';margin-right:6px;"></span>' +
             '<span style="font-size:11px;color:#6B7280;">'+word[r.state]+'</span></td>' +
-          '<td>' + '<strong>'+esc(r.post)+'</strong>'+(r.block?'<br><span style="font-size:10px;color:#6B7280;">'+esc(r.block)+' block</span>':'') + '</td>' +
+          '<td>' + relOfficeCell(r) + '</td>' +
           '<td>'+esc(distLabel(r.district))+'</td>' +
           '<td style="font-size:11.5px;color:#6B7280;">'+esc(r.lastPerson || '-')+(r.changed ? '<br><span style="font-size:10px;color:#1D4ED8;font-weight:700;">official changed</span>' : '')+'</td>' +
           '<td style="text-align:center;font-weight:700;">'+r.count+'</td>' +
@@ -1514,6 +1566,7 @@
   function curDist()  { return dsGet('rp-district-sel'); }
   function curBlock() { return document.getElementById('rp-block-sel').value; }
   function curMonth() { return document.getElementById('rp-month-sel').value; }
+  function curDept()  { return document.getElementById('rp-dept-sel').value; }
 
   function fillSelect(sel, values, keepCur) {
     var cur = keepCur ? sel.value : '';
@@ -1547,6 +1600,26 @@
     });
     var months = Object.keys(set).sort(function(a,b){ return monthSortVal(a)-monthSortVal(b); });
     fillSelect(document.getElementById('rp-month-sel'), months, true);
+    populateReportDepts();   // the department list follows the same district and block
+  }
+
+  function populateReportDepts() {
+    var dist = curDist(), block = curBlock(), set = {};
+    _allMeetings.forEach(function(m){
+      if (distMiss(dist, m.district)) return;
+      if (block && m.block !== block) return;
+      var dp = String(m.department || '').trim(); if (dp) set[dp] = true;
+    });
+    var sel = document.getElementById('rp-dept-sel');
+    fillSelect(sel, Object.keys(set).sort(), true);
+    if (!set[sel.value]) sel.value = '';
+  }
+  var _rpDeptNames = [];
+  function selectDept(i) {
+    var sel = document.getElementById('rp-dept-sel');
+    sel.value = _rpDeptNames[i] || '';
+    applyReportFilters();
+    scrollAreaTo(document.getElementById('rp-detail'));
   }
 
   function onReportDistrictChange() { document.getElementById('rp-block-sel').value=''; populateReportBlocks(); populateReportMonths(); applyReportFilters(); }
@@ -1587,11 +1660,12 @@
 
   function applyReportFilters() {
     if (!_allMeetings) return;
-    var dist = curDist(), block = curBlock(), month = curMonth();
+    var dist = curDist(), block = curBlock(), month = curMonth(), dept = curDept();
     var filtered = _allMeetings.filter(function(m){
       if (distMiss(dist, m.district))    return false;
       if (block && m.block    !== block) return false;
       if (month && monthKey(m.date) !== month) return false;
+      if (dept && String(m.department || '').trim() !== dept) return false;
       return true;
     });
     _reportFiltered = filtered;
@@ -1680,13 +1754,13 @@
     });
 
     var headers = ['S.No','Meeting ID','District','Block','Planned Date','Conducted Date',
-                   'Status','Employee','Designation','Met With','Stakeholder Post',
+                   'Status','Employee','Designation','Met With','Stakeholder Post','Department',
                    'Purpose','Meeting Type','MoM Link','Photos Link'];
     var lines = [headers.map(csvCell).join(',')];
     rows.forEach(function(m, i){
       lines.push([
         i + 1, m.meetingId, m.district, m.block, m.date, m.conductDate,
-        m.status, m.employeeName, m.post, m.stakeholderName, m.stakeholderPost,
+        m.status, m.employeeName, m.post, m.stakeholderName, m.stakeholderPost, m.department,
         m.purpose, m.meetingType, m.momUrl, m.photoUrl
       ].map(csvCell).join(','));
     });
@@ -1699,6 +1773,7 @@
     if (dsGet('rp-district-sel').length) parts.push(d);
     if (b)  parts.push(b);
     parts.push(mo ? mo : 'AllMonths');
+    if (curDept()) parts.push(curDept());
     var fname = parts.join('_').replace(/[^A-Za-z0-9_\-]+/g, '_') + '.csv';
 
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1720,6 +1795,7 @@
     var parts = [ distLbl.toUpperCase() ];
     if (block) parts.push(block.toUpperCase());
     parts.push(month ? month : 'All Months');
+    if (curDept()) parts.push(curDept());
     document.getElementById('rp-dist-label').textContent = parts.join('  ·  ');
 
     var t = { total:meetings.length, conducted:0, planned:0, cancelled:0, postponed:0, followup:0 };
@@ -1779,6 +1855,35 @@
       } else { blockCard.style.display = 'none'; }
     } else {
       blockCard.style.display = 'none';
+    }
+
+    // Department-wise breakdown - the same post exists in several departments
+    var deptCard = document.getElementById('rp-bydept-card');
+    var dMap = {};
+    meetings.forEach(function(m){
+      var dn = String(m.department || '').trim() || 'Not recorded';
+      if (!dMap[dn]) dMap[dn] = { total:0, conducted:0 };
+      dMap[dn].total++;
+      if ((m.status||'') === 'Conducted') dMap[dn].conducted++;
+    });
+    var dNames = Object.keys(dMap).sort(function(a,b){
+      return (a === 'Not recorded') - (b === 'Not recorded') || dMap[b].conducted - dMap[a].conducted || dMap[b].total - dMap[a].total;
+    });
+    _rpDeptNames = dNames;   // the card passes its index, since names carry quotes
+    if (dNames.length && !(dNames.length === 1 && dNames[0] === 'Not recorded')) {
+      document.getElementById('rp-bydept').innerHTML = dNames.map(function(dn, i){
+        var s = dMap[dn], clickable = dn !== 'Not recorded' && dn !== curDept();
+        return '<div class="block-card"' + (clickable ? ' onclick="selectDept(' + i + ')"' : ' style="cursor:default;"') + '>' +
+               '<div class="bc-name">' + esc(dn) + '</div>' +
+               '<div class="bc-stats">' +
+                 '<div class="bc-stat"><div class="bc-num" style="color:#1D4ED8;">' + s.total + '</div><div class="bc-lbl">Total</div></div>' +
+                 '<div class="bc-stat"><div class="bc-num" style="color:#065F46;">' + s.conducted + '</div><div class="bc-lbl">Conducted</div></div>' +
+                 '<div class="bc-stat"><div class="bc-num" style="color:#92400E;">' + (s.total - s.conducted) + '</div><div class="bc-lbl">Pending</div></div>' +
+               '</div></div>';
+      }).join('');
+      deptCard.style.display = 'block';
+    } else {
+      deptCard.style.display = 'none';
     }
 
     var conducted = meetings.filter(function(m){ return (m.status||'')==='Conducted'; });
@@ -1852,6 +1957,7 @@
              '<td style="font-size:11px;color:#6B7280;">'+r.post+'</td>' +
              '<td><strong>'+r.stakeholderName+'</strong></td>' +
              '<td style="font-size:11px;color:#6B7280;">'+r.stakeholderPost+'</td>' +
+             '<td style="font-size:11px;color:#6B7280;">'+esc(r.department || '-')+'</td>' +
              '<td>'+r.purpose+'</td>' +
              '<td><span class="badge-type">'+r.meetingType+'</span></td>' +
              '<td>'+momLink+'</td>' +
@@ -1861,7 +1967,7 @@
     }).join('');
     var table = '<table class="rep-table"><thead><tr>' +
       '<th>#</th><th>Meeting ID</th><th>Date</th><th>District</th><th>By</th><th>Designation</th>' +
-      '<th>Met With</th><th>Post</th><th>Purpose</th><th>Type</th><th>MoM</th><th>Photos</th><th>Govt MoM</th>' +
+      '<th>Met With</th><th>Post</th><th>Department</th><th>Purpose</th><th>Type</th><th>MoM</th><th>Photos</th><th>Govt MoM</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table>';
     var pager = pages <= 1 ? '' :
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap;">' +

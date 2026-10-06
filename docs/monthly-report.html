@@ -233,7 +233,8 @@
 
     // Focus
     html+=sec('Meeting Focus','calc','Computed')+'<div class="two">'+
-      focusCard('By Purpose', j.byPurpose)+focusCard('By Stakeholder', j.byStakeholder)+'</div></section>';
+      focusCard('By Purpose', j.byPurpose)+focusCard('By Stakeholder', j.byStakeholder)+
+      (j.byDepartment && j.byDepartment.length ? focusCard('By Department', j.byDepartment) : '')+'</div></section>';
 
     // Outcomes: what came out of the meetings, not just how many happened
     var oc=j.outcomes;
@@ -268,7 +269,7 @@
         html+='<div style="font-size:12px;font-weight:700;color:var(--crit);margin-bottom:6px;">No contact in '+rel.coldDays+'+ days ('+rel.coldCount+')</div>'+
           '<div class="tbl-wrap"><table><thead><tr><th>Office</th><th>District</th><th class="r">Meetings</th><th class="r">Last contact</th></tr></thead><tbody class="num">';
         rel.cold.forEach(function(r){
-          html+='<tr><td class="name">'+esc(r.post)+(r.lastPerson?'<br><small style="color:var(--muted);">last met: '+esc(r.lastPerson)+'</small>':'')+'</td>'+
+          html+='<tr><td class="name">'+esc(r.post)+(r.department?'<br><small style="color:#1d4ed8;">'+esc(r.department)+'</small>':'')+(r.lastPerson?'<br><small style="color:var(--muted);">last met: '+esc(r.lastPerson)+'</small>':'')+'</td>'+
             '<td>'+esc(r.district)+'</td><td class="r">'+r.count+'</td>'+
             '<td class="r" style="color:var(--crit);font-weight:700;">'+r.daysSince+' days</td></tr>';
         });

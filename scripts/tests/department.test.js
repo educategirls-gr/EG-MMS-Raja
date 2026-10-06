@@ -31,6 +31,7 @@ const chain = new Proxy(function () {}, {
   apply: () => chain });
 const ctx = {
   console, Logger: { log: noop }, MailApp: { sendEmail: noop },
+  UrlFetchApp: { fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' }) },   // no AI: reports use their template
   Session: { getScriptTimeZone: () => 'Asia/Kolkata' },
   Utilities: { formatDate: (d) => String(d), sleep: noop, base64Decode: (s) => s, newBlob: () => ({}) },
   CacheService: { getScriptCache: () => ({ get: (k) => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; }, remove: (k) => { delete cache[k]; },
@@ -104,6 +105,32 @@ delete sheets['Stakeholder Type'];
 ok('tab named "Stakeholder Type " (space at the end) is still read', ctx.DEPT_refresh() === 3);
 delete sheets['Stakeholder Type '];
 ok('no such tab: nothing read, the stored copy is kept', ctx.DEPT_refresh() === 0 && JSON.parse(props.DEPTS_MIRROR).length === 3);
+
+// 8. portal overview numbers: plan row conducted, follow-up planned, one plan without a department
+ctx.CACHE_clearAll();
+const st = ctx.getDashboardStats(S, true, '');
+const ed = (st.byDepartment || []).filter(x => x.name === 'Education Department')[0] || {};
+ok('overview: department counted, 2 meetings of which 1 conducted', ed.total === 2 && ed.conducted === 1, JSON.stringify(st.byDepartment));
+ok('overview: the plan without a department is counted apart', st.deptNotRecorded === 1, st.deptNotRecorded);
+ok('overview: recent conducted names the department', st.recentConducted[0] && st.recentConducted[0].department === 'Education Department', JSON.stringify(st.recentConducted[0]));
+
+// 9. the chatbot sees the department of every meeting
+const asks = ctx.askAllMeetings_();
+const askedConducted = asks.filter(m => m.status === 'Conducted')[0];
+ok('chatbot: conducted meeting carries its department', askedConducted && askedConducted.dept === 'Education Department', JSON.stringify(askedConducted));
+ok('chatbot: the line it reads says "(Education Department)"', askedConducted && /, Chief Block Education Officer\/BEO \(Education Department\)/.test(ctx.askRow_(askedConducted)), askedConducted && ctx.askRow_(askedConducted));
+
+// 10. monthly report: one post in two departments is two offices
+const MM = (id, dept) => ({ meetingId: id, district: 'BARAN', employeeName: 'Seema Pankaj', status: 'Conducted', date: '2 Oct 2026', conductDate: '2 Oct 2026',
+  stakeholderPost: 'District Coordinator', stakeholderName: 'Official ' + id, department: dept, purpose: 'Enrollment', meetingType: 'One-on-One', govtMom: '' });
+ctx.getReportData = () => ({ success: true, meetings: [MM('A1', 'Education Department'), MM('A2', 'Education Department'), MM('A3', "Women & Child Development"), MM('A4', '')] });
+ctx.getEmployeeMaster = () => ({ success: true, employees: [{ name: 'Seema Pankaj', designation: 'Program Coordinator', district: 'BARAN', block: 'ATRU' }] });
+const mr = ctx.getMonthlyReport({ role: 'State', name: 'Brajesh Kumar Sinha', email: 'brajeshkumar.sinha@educategirls.ngo' }, 'Oct 2026');
+ok('monthly report: one post in two departments (and one without) is three offices', mr.relationships && mr.relationships.totalOffices === 3, JSON.stringify(mr.relationships || mr.message));
+ok('monthly report: by department, the meeting without one left out',
+   JSON.stringify(mr.byDepartment) === JSON.stringify([{ name: 'Education Department', count: 2 }, { name: 'Women & Child Development', count: 1 }]), JSON.stringify(mr.byDepartment));
+const mh = ctx.buildReportEmailHtml(mr, 'Brajesh Kumar Sinha');
+ok('monthly email: a "By Department" list naming both, escaped', /By Department/.test(mh) && /Women &amp; Child Development/.test(mh));
 
 console.log('\n' + (fails ? fails + ' FAILED' : 'all checks pass'));
 process.exit(fails ? 1 : 0);

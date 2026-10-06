@@ -3833,6 +3833,7 @@ function getMonthlyReport(session, monthParam) {
     function tally(list, key){ var o={}; list.forEach(function(m){ var k=(m[key]||'-').toString().trim()||'-'; o[k]=(o[k]||0)+1; }); return Object.keys(o).map(function(k){ return { name:k, count:o[k] }; }).sort(function(a,b){ return b.count-a.count; }).slice(0,6); }
     var byPurpose = tally(conducted, 'purpose');
     var byStakeholder = tally(conducted, 'stakeholderPost');
+    var byDepartment = tally(conducted.filter(function(m){ return (m.department||'').toString().trim(); }), 'department');
 
     // ── Outcomes ──
     // Every report so far counts activity: how many meetings happened. This
@@ -3886,8 +3887,10 @@ function getMonthlyReport(session, monthParam) {
       if (!pk) return;
       var ts = relTs_(m);
       if (!ts || ts > relRefTs) return;                 // nothing after this report's month
-      var k = normDist_(m.district) + '|' + pk;
-      var r = relMap[k] || (relMap[k] = { post:(post || person), district:(m.district||'').toString().trim(),
+      // The same post exists in several departments, so the department joins the key.
+      var dept = (m.department||'').toString().trim();
+      var k = normDist_(m.district) + '|' + _prepNorm_(dept) + '|' + pk;
+      var r = relMap[k] || (relMap[k] = { post:(post || person), department:dept, district:(m.district||'').toString().trim(),
                                           lastPerson:'', people:{}, count:0, first:ts, last:0 });
       r.count++;
       if (person) r.people[_prepNorm_(person)] = 1;
@@ -3901,7 +3904,7 @@ function getMonthlyReport(session, monthParam) {
     var relSeen = {};
     conducted.forEach(function(m){
       var pk = _prepNorm_(m.stakeholderPost) || _prepNorm_(m.stakeholderName);
-      if (pk) relSeen[normDist_(m.district) + '|' + pk] = 1;
+      if (pk) relSeen[normDist_(m.district) + '|' + _prepNorm_(m.department) + '|' + pk] = 1;
     });
     var relationships = {
       totalOffices:   relAll.length,
@@ -3911,7 +3914,7 @@ function getMonthlyReport(session, monthParam) {
       coldDays:       COLD_DAYS,
       coldCount:      relCold.length,
       cold:           relCold.slice(0, 10).map(function(r){
-                        return { post:r.post, district:r.district, lastPerson:r.lastPerson,
+                        return { post:r.post, department:r.department, district:r.district, lastPerson:r.lastPerson,
                                  peopleCount:r.peopleCount, count:r.count,
                                  daysSince: Math.round((relRefTs - r.last) / 86400000) };
                       })
@@ -3956,7 +3959,7 @@ function getMonthlyReport(session, monthParam) {
               distsActive:Object.keys(distsActive).length, distsInScope:Object.keys(distsScope).length,
               pending:pending, govtMom:govtMom },
       breakdown: breakdown,
-      byPurpose: byPurpose, byStakeholder: byStakeholder,
+      byPurpose: byPurpose, byStakeholder: byStakeholder, byDepartment: byDepartment,
       relationships: relationships, outcomes: outcomes,
       zeroAreas: zeroAreas, attention: attention,
       narrative: { ai:false, summary:summary, highlights:highlights, recommendations:recs }
@@ -4161,6 +4164,7 @@ function buildReportPrompt(r) {
   if (b.leaderboard && b.leaderboard.length) L.push('Top districts by conducted: ' + b.leaderboard.slice(0,5).map(function(x){ return x.name + ' ' + x.conducted + ' (' + x.pct + '%)'; }).join(', '));
   if (r.byPurpose && r.byPurpose.length) L.push('Meeting purposes: ' + r.byPurpose.map(function(x){ return x.name + ' ' + x.count; }).join(', '));
   if (r.byStakeholder && r.byStakeholder.length) L.push('Stakeholder types met: ' + r.byStakeholder.map(function(x){ return x.name + ' ' + x.count; }).join(', '));
+  if (r.byDepartment && r.byDepartment.length) L.push('Departments met: ' + r.byDepartment.map(function(x){ return x.name + ' ' + x.count; }).join(', '));
   if (r.outcomes && r.outcomes.answered) {
     var oc = r.outcomes;
     L.push('Outcomes (reported by the officer, not inferred): ' + oc.concrete + ' of ' + oc.answered + ' meetings produced something concrete (' + oc.rate + '%), broken down as ' + oc.counts.map(function(x){ return x.name + ' ' + x.count; }).join(', '));
@@ -4515,7 +4519,7 @@ function askOneLine_(x) { return (x || '').toString().replace(/\s+/g, ' ').trim(
 // Every meeting, one record each, the furthest stage winning when an ID
 // appears in more than one sheet, the later row winning at equal stage.
 function askAllMeetings_() {
-  var byId = {}, emailOf = {};
+  var byId = {}, emailOf = {}, deptOf = {};
   function keep(m) {
     var old = byId[m.id];
     if (!old || (ASK_STATUS_RANK[m.status] || 0) >= (ASK_STATUS_RANK[old.status] || 0)) byId[m.id] = m;
@@ -4524,6 +4528,7 @@ function askAllMeetings_() {
   for (var i = 1; i < pd.length; i++) {
     var id = (pd[i][0] || '').toString().trim(); if (!id) continue;
     emailOf[id] = (pd[i][4] || '').toString().trim().toLowerCase();
+    deptOf[id] = (pd[i][COL_PLAN_DEPT - 1] || '').toString().trim();
     var st = (pd[i][13] || 'Planned').toString().trim();
     if (st !== 'Planned' && st !== 'Follow-up') continue;
     keep({ id:id, status:st, ts:askTs_(pd[i][5]), district:(pd[i][1]||'').toString().trim(),
@@ -4535,6 +4540,7 @@ function askAllMeetings_() {
   for (var j = 1; j < cd.length; j++) {
     var cid = (cd[j][0] || '').toString().trim(); if (!cid) continue;
     if (!emailOf[cid]) emailOf[cid] = (cd[j][4] || '').toString().trim().toLowerCase();
+    if (!deptOf[cid]) deptOf[cid] = (cd[j][COL_CON_DEPT - 1] || '').toString().trim();
     keep({ id:cid, status:'Conducted', ts:askTs_(cd[j][13]) || askTs_(cd[j][5]),
            district:(cd[j][1]||'').toString().trim(), block:(cd[j][COL_CON_SKBLOCK-1]||'').toString().trim(),
            officer:(cd[j][2]||'').toString().trim(), name:(cd[j][9]||'').toString().trim(),
@@ -4562,6 +4568,7 @@ function askAllMeetings_() {
   var out = [], testE = testEmailsFrom_(sheetRows_(EMPLOYEE_SHEET) || []);
   for (var key in byId) {
     byId[key].email = emailOf[key] || '';
+    byId[key].dept  = deptOf[key] || '';
     if (testE[byId[key].email]) continue;   // the developer's test meetings
     out.push(byId[key]);
   }
@@ -4602,8 +4609,8 @@ function askSummary_(rows, now, scopeDistricts) {
       var mo = askMonth_(m.ts); if (mo) byMonth[mo] = (byMonth[mo] || 0) + 1;
       if (m.officer) byOfficer[m.officer] = (byOfficer[m.officer] || 0) + 1;
       var o = m.outcome || 'Not recorded'; outc[o] = (outc[o] || 0) + 1;
-      var ok = d + '|' + (_prepNorm_(m.post) || _prepNorm_(m.name));
-      if (!lastOffice[ok] || m.ts > lastOffice[ok].ts) lastOffice[ok] = { ts:m.ts, district:d, post:m.post || m.name, name:m.name };
+      var ok = d + '|' + _prepNorm_(m.dept) + '|' + (_prepNorm_(m.post) || _prepNorm_(m.name));
+      if (!lastOffice[ok] || m.ts > lastOffice[ok].ts) lastOffice[ok] = { ts:m.ts, district:d, post:(m.post || m.name) + (m.dept ? ' (' + m.dept + ')' : ''), name:m.name };
     } else if ((m.status === 'Planned' || m.status === 'Follow-up') && m.ts && m.ts < now - 86400000) {
       overdue++; if (!oldest || m.ts < oldest) oldest = m.ts;
     }
@@ -4665,7 +4672,7 @@ function askRow_(m) {
            m.status === 'Postponed' || m.status === 'Cancelled' ? m.status + ' (was ' + when + ')' : m.status + ' for ' + when),
            (m.district || 'State level') + (m.block ? ' / ' + m.block : ''),
            'Officer: ' + (m.officer || '-'),
-           'Met: ' + (m.name || '-') + (m.post ? ', ' + m.post : '')];
+           'Met: ' + (m.name || '-') + (m.post ? ', ' + m.post : '') + (m.dept ? ' (' + m.dept + ')' : '')];
   if (m.purpose)  p.push('Purpose: ' + m.purpose);
   if (m.outcome)  p.push('Outcome: ' + m.outcome);
   if (m.notes)    p.push('Notes: ' + m.notes);
@@ -6088,12 +6095,13 @@ function buildReportEmailHtml(rep, recipientName) {
     '<div style="font-size:12px;color:#6b7280;margin-top:8px;"><b style="color:#166534;">'+k.activeStaff+'</b> active &nbsp;&middot;&nbsp; <b style="color:#991b1b;">'+(k.totalStaff-k.activeStaff)+'</b> inactive of '+k.totalStaff+' staff</div></td></tr></table></div>');
 
   // Meeting focus
-  function focusCol(title, arr){
+  function focusCol(title, arr, wide){
     var body = (arr||[]).map(function(x){ return '<tr><td style="padding:5px 0;font-weight:600;">'+_emailEsc(x.name)+'</td><td align="right" style="padding:5px 0;font-weight:700;">'+x.count+'</td></tr>'; }).join('') || '<tr><td style="color:#a8a29e;padding:5px 0;">No data</td></tr>';
-    return '<td width="50%" valign="top" style="padding:0 8px;"><div style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;"><div style="font-size:12px;font-weight:700;color:#1f2937;margin-bottom:4px;">'+title+'</div><table width="100%" style="font-size:13px;">'+body+'</table></div></td>';
+    return '<td '+(wide ? 'colspan="2"' : 'width="50%"')+' valign="top" style="padding:0 8px;"><div style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;"><div style="font-size:12px;font-weight:700;color:#1f2937;margin-bottom:4px;">'+title+'</div><table width="100%" style="font-size:13px;">'+body+'</table></div></td>';
   }
   var focus = (rep.byPurpose&&rep.byPurpose.length || rep.byStakeholder&&rep.byStakeholder.length) ?
-    sec(sech('Meeting Focus','Computed','calc')+'<table width="100%" cellpadding="0" cellspacing="0"><tr>'+focusCol('By Purpose',rep.byPurpose)+focusCol('By Stakeholder',rep.byStakeholder)+'</tr></table>') : '';
+    sec(sech('Meeting Focus','Computed','calc')+'<table width="100%" cellpadding="0" cellspacing="0"><tr>'+focusCol('By Purpose',rep.byPurpose)+focusCol('By Stakeholder',rep.byStakeholder)+'</tr>'+
+      (rep.byDepartment && rep.byDepartment.length ? '<tr><td colspan="2" style="height:12px;font-size:1px;">&nbsp;</td></tr><tr>'+focusCol('By Department',rep.byDepartment,true)+'</tr>' : '')+'</table>') : '';
 
   // Outcomes: what came out of the meetings, not just how many happened.
   var oc = rep.outcomes;
@@ -6130,7 +6138,7 @@ function buildReportEmailHtml(rep, recipientName) {
     }
     var coldRows = (rel.cold||[]).map(function(r){
       return '<tr style="border-top:1px solid #f0ebe5;">'+
-        '<td style="padding:8px 12px;"><b>'+_emailEsc(r.post)+'</b>'+(r.lastPerson?'<br><span style="color:#6b7280;font-size:12px;">last met: '+_emailEsc(r.lastPerson)+'</span>':'')+'</td>'+
+        '<td style="padding:8px 12px;"><b>'+_emailEsc(r.post)+'</b>'+(r.department?'<br><span style="color:#1d4ed8;font-size:12px;">'+_emailEsc(r.department)+'</span>':'')+(r.lastPerson?'<br><span style="color:#6b7280;font-size:12px;">last met: '+_emailEsc(r.lastPerson)+'</span>':'')+'</td>'+
         '<td style="padding:8px 12px;color:#6b7280;font-size:12px;">'+_emailEsc(r.district)+'</td>'+
         '<td align="right" style="padding:8px 12px;color:#6b7280;font-size:12px;">'+r.count+'</td>'+
         '<td align="right" style="padding:8px 12px;color:#991b1b;font-weight:700;font-size:12px;white-space:nowrap;">'+r.daysSince+' days</td></tr>';
@@ -6640,6 +6648,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
     var distMap = {};   // district → {total,conducted,planned,cancelled,postponed}
     var typeMap = {};
     var purpMap = {};
+    var deptMap = {}, deptNone = 0;   // department → {total,conducted}; meetings without one
     var monthMap= {};   // "MMM YYYY" → conducted count
 
     for (var i = 1; i < planData.length; i++) {
@@ -6666,6 +6675,12 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
 
       if (type) typeMap[type] = (typeMap[type] || 0) + 1;
       if (purp) purpMap[purp] = (purpMap[purp] || 0) + 1;
+      var dept = (row[COL_PLAN_DEPT - 1] || '').toString().trim();
+      if (dept) {
+        if (!deptMap[dept]) deptMap[dept] = { total:0, conducted:0 };
+        deptMap[dept].total++;
+        if (status === 'conducted') deptMap[dept].conducted++;
+      } else deptNone++;
 
       if (status === 'conducted' && dateV) {
         var d = new Date(dateV);
@@ -6699,6 +6714,11 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
     var purpArr = [];
     for (var p in purpMap) purpArr.push({name:p, count:purpMap[p]});
     purpArr.sort(function(a,b){ return b.count - a.count; });
+
+    // department array, most conducted first
+    var deptArr = [];
+    for (var dp in deptMap) deptArr.push({ name:dp, total:deptMap[dp].total, conducted:deptMap[dp].conducted });
+    deptArr.sort(function(a,b){ return (b.conducted - a.conducted) || (b.total - a.total) || a.name.localeCompare(b.name); });
 
     // month trend (last 6)
     var monthArr = [];
@@ -6743,6 +6763,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
           post:            (rr[3] ||'').toString(),
           stakeholderName: (rr[9] ||'').toString(),
           stakeholderPost: (rr[10]||'').toString(),
+          department:      (rr[COL_CON_DEPT-1]||'').toString(),
           purpose:         (rr[11]||'').toString(),
           meetingType:     (rr[8] ||'').toString(),
           conductDate:     fmtDateVal(rr[13])
@@ -6764,6 +6785,8 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       districts:           distArr,
       byType:              typeArr,
       byPurpose:           purpArr,
+      byDepartment:        deptArr,
+      deptNotRecorded:     deptNone,
       monthTrend:          monthArr,
       recentConducted:     recent,
       activeEmployees:     Object.keys(empSet).length,
