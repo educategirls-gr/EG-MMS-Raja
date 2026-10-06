@@ -3376,7 +3376,9 @@
     function need(ok, label, ids) { if (!ok) { missing.push(label); badIds = badIds.concat(ids); } }
     need(date,     'Meeting Date', ['meetingDate']);
     need(time,     'Meeting Time (choose hour, minute and AM/PM)', ['mt-h','mt-m','mt-ap']);
-    need(v('stakeholderType'), 'Stakeholder Type (Department)', ['stakeholderType']);
+    // required only when the list loaded; an empty list must never block planning
+    need(v('stakeholderType') || document.getElementById('stakeholderType').options.length <= 1,
+         'Stakeholder Type (Department)', ['stakeholderType']);
     need(apost,    'Stakeholder Post', ['adhikariPost']);
     need(aname,    'Stakeholder Name', ['adhikariName']);
     need(purpose2, 'Meeting Purpose', ['meetingPurpose']);

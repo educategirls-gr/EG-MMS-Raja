@@ -1605,7 +1605,10 @@ function deptsRead_() {
 }
 function deptsReadFromSheet_() {
   try {
-    var ws = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Stakeholder Type');
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var ws = ss.getSheetByName('Stakeholder Type');
+    // the tab once had a space at the end of its name; find it either way
+    if (!ws) ws = ss.getSheets().filter(function(s) { return s.getName().trim().toLowerCase() === 'stakeholder type'; })[0];
     if (!ws) return null;
     var d = ws.getDataRange().getValues(), out = [];
     for (var i = 1; i < d.length; i++) { if (d[i][0]) out.push(d[i][0].toString().trim()); }

@@ -38,7 +38,8 @@ const ctx = {
     getAll: (ks) => { const o = {}; ks.forEach(k => { if (k in cache) o[k] = cache[k]; }); return o; } }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); },
     getProperties: () => Object.assign({}, props), setProperties: (o) => Object.assign(props, o), deleteProperty: (k) => { delete props[k]; } }) },
-  SpreadsheetApp: { openById: () => ({ getSheetByName: (n) => sheets[n] ? sheet(sheets[n]) : null }) },
+  SpreadsheetApp: { openById: () => ({ getSheetByName: (n) => sheets[n] ? sheet(sheets[n]) : null,
+    getSheets: () => Object.keys(sheets).map(n => Object.assign(sheet(sheets[n]), { getName: () => n })) }) },
   DocumentApp: chain,
   DriveApp: { Access: {}, Permission: {}, getFileById: () => ({ setSharing: noop, moveTo: noop }),
               getFolderById: () => ({ getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => ({ getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => ({}) }) }) },
@@ -96,6 +97,13 @@ ok('portal data: every meeting has its department', rep.meetings.length === 2 &&
 // 6. a plan without one (older page) still saves
 const old = Object.assign({}, plan, { adhikariName: 'Another Official', department: undefined });
 ok('a plan without a department still saves, column Y left empty', ctx.saveMeeting(old).success === true && !P[P.length - 1][24]);
+
+// 7. the tab once had a space at the end of its name; it is still found
+sheets['Stakeholder Type '] = sheets['Stakeholder Type'];
+delete sheets['Stakeholder Type'];
+ok('tab named "Stakeholder Type " (space at the end) is still read', ctx.DEPT_refresh() === 3);
+delete sheets['Stakeholder Type '];
+ok('no such tab: nothing read, the stored copy is kept', ctx.DEPT_refresh() === 0 && JSON.parse(props.DEPTS_MIRROR).length === 3);
 
 console.log('\n' + (fails ? fails + ' FAILED' : 'all checks pass'));
 process.exit(fails ? 1 : 0);
