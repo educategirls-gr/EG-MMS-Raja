@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-state-title="EG MMS | {STATE} Analytics Portal">EG MMS | State Analytics Portal</title>
   <script src="state.js"></script>
+  <script>
+    // Opened inside the officer app (dashboard.html) as report.html?embed=1:
+    // the app's menu does the navigating, so the portal's own menu is hidden.
+    if (/[?&]embed=1(&|$)/.test(location.search)) document.documentElement.className += ' embed';
+  </script>
   <link rel="icon" type="image/png" href="eg-logo.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -343,9 +348,17 @@
                font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; }
     .cb-send:disabled { opacity: .45; cursor: default; }
     .cb-note { font-size: 10.5px; color: #9CA3AF; text-align: center; padding: 0 10px 8px; background: #fff; }
+
+    /* Inside the app: no sidebar, no bottom bar, and the top bar keeps only
+       the date, the snapshot note and Refresh (the app shows the title). */
+    html.embed .sidebar, html.embed .mob-nav, html.embed .mob-version,
+    html.embed .topbar-left, html.embed .topbar-center { display: none !important; }
+    html.embed .topbar { height: 44px; justify-content: flex-end; }
     @media (max-width: 960px) {
       .cb-fab { right: 14px; bottom: 76px; }          /* clear of the bottom nav */
       .cb-panel { inset: 0; width: auto; height: auto; max-height: none; border-radius: 0; }
+      html.embed .content-area { padding-bottom: 14px; }
+      html.embed .cb-fab { bottom: 18px; }
     }
   </style>
 </head>
@@ -360,6 +373,9 @@
     <div class="badge"><span class="state-name">State</span> Analytics Portal</div>
   </div>
   <div class="sidebar-nav">
+    <a class="nav-item" id="nav-home" href="dashboard.html" style="text-decoration:none;">
+      <span style="font-size:17px;">🏠</span><span id="nav-home-txt">Back to Dashboard</span>
+    </a>
     <div class="nav-section">Analytics</div>
     <a class="nav-item" id="nav-overview" href="report.html" style="text-decoration:none;">
       <span style="font-size:17px;">📊</span><span>Overview</span>
@@ -376,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.10 &middot; 6 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.11 &middot; 6 Oct 2026</span>
   </div>
 </div>
 
@@ -634,7 +650,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.10 &middot; 6 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.11 &middot; 6 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -840,6 +856,7 @@
     rel:      { title: 'Stakeholders',     sub: 'Relationships with government offices over time' }
   };
   function showView(v) {
+    PORTAL_VIEW = v;   // Refresh reloads the section on screen
     ['overview','reports','perf','rel'].forEach(function(x) {
       document.getElementById('view-'+x).classList.remove('active');
       var n = document.getElementById('nav-'+x); if (n) n.classList.remove('active');
@@ -2244,6 +2261,22 @@
   }
 
   // ── Init ──────────────────────────────────────────────────────
+  // The app opens one page for all four sections: report.html?embed=1&view=reports
+  var _askedView = (/[?&]view=(\w+)/.exec(location.search) || [])[1];
+  if (_askedView && TOPBAR[_askedView]) PORTAL_VIEW = _askedView;
+
+  // Home goes to the app. dashboard.html sends anyone not signed in to the
+  // sign-in page, so one link serves both; only the words differ. The bottom
+  // bar is further down the page, so this waits for the page to be read.
+  function paintHomeLinks() {
+    var signedIn = false;
+    try { signedIn = !!(localStorage.getItem('eg_grm_session') || sessionStorage.getItem('eg_grm_session')); } catch (e) {}
+    var a = document.getElementById('nav-home-txt'), b = document.getElementById('mob-nav-home');
+    if (a) a.textContent = signedIn ? 'Back to Dashboard' : 'Sign in';
+    if (b) b.textContent = signedIn ? 'Home' : 'Sign in';
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paintHomeLinks); else paintHomeLinks();
+
   showView(PORTAL_VIEW);
 </script>
 
@@ -2416,6 +2449,7 @@
 <!-- Mobile bottom nav -->
 <div class="mob-nav">
   <div class="mob-nav-inner">
+    <a class="mob-nav-btn" id="mob-nav-home" href="dashboard.html" style="text-decoration:none;">Home</a>
     <a class="mob-nav-btn" id="mob-nav-overview" href="report.html" style="text-decoration:none;">Overview</a>
     <a class="mob-nav-btn" id="mob-nav-reports" href="districtreports.html" style="text-decoration:none;">District Reports</a>
     <a class="mob-nav-btn" id="mob-nav-perf" href="teamperformance.html" style="text-decoration:none;">Team</a>

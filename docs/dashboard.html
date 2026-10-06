@@ -92,6 +92,15 @@
     .view        { display: none; }
     .view.active { display: block; }
 
+    /* Analytics: the portal pages fill the content area, edge to edge */
+    .content-area.analytics-on { padding: 0; display: flex; flex-direction: column; min-height: 0; }
+    .content-area.analytics-on > .alert { margin: 12px 16px 0; }
+    #view-analytics.active { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    #analytics-frame { flex: 1; width: 100%; min-height: 0; border: 0; display: block; background: #F5F5F5; }
+    .topbar-open { font-size: 12px; font-weight: 700; color: #7B1010; text-decoration: none; white-space: nowrap;
+                   border: 1.5px solid #E5E7EB; border-radius: 8px; padding: 7px 12px; }
+    .topbar-open:hover { background: #FEF2F2; }
+
     /* Form */
     .form-section-label { font-size: 12px; font-weight: 700; color: #7B1010; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
     .form-divider { border: none; border-top: 1px solid #F0F0F0; margin: 20px 0; }
@@ -543,14 +552,25 @@
     <div class="nav-item" id="nav-state" onclick="showView('state')" style="display:none;">
       <span class="nav-icon">🗺️</span><span>State Meetings</span>
     </div>
-    <div class="nav-item" id="nav-report" onclick="location.href='report.html'">
-      <span class="nav-icon">📊</span><span>Analytics</span>
+    <!-- The analytics portal, shown inside the app (see showAnalytics) -->
+    <div class="nav-label" style="margin-top:10px;">Analytics</div>
+    <div class="nav-item" id="nav-an-overview" onclick="showAnalytics('overview')">
+      <span class="nav-icon">📊</span><span>Overview</span>
+    </div>
+    <div class="nav-item" id="nav-an-reports" onclick="showAnalytics('reports')">
+      <span class="nav-icon">🏢</span><span>District Reports</span>
+    </div>
+    <div class="nav-item" id="nav-an-perf" onclick="showAnalytics('perf')">
+      <span class="nav-icon">👥</span><span>Team Performance</span>
+    </div>
+    <div class="nav-item" id="nav-an-rel" onclick="showAnalytics('rel')">
+      <span class="nav-icon">🤝</span><span>Stakeholders</span>
     </div>
 
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.10 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.11 &middot; 6 Oct 2026</div>
   </div>
 </div>
 
@@ -569,11 +589,19 @@
         <div class="topbar-sub"   id="topbar-sub">Plan your upcoming meetings</div>
       </div>
     </div>
+    <!-- the same page on its own, at a link that can be shared -->
+    <a id="topbar-open" class="topbar-open" href="report.html" target="_blank" rel="noopener" style="display:none;"><span>Open in new tab</span> &#8599;</a>
   </div>
 
   <div class="content-area">
     <div id="alert-err" class="alert alert-error"></div>
     <div id="alert-ok"  class="alert alert-success"></div>
+
+    <!-- View: Analytics - the portal pages (report.html) inside the app, so its
+         menu stays in reach. The pages stay open to anyone at their own links. -->
+    <div id="view-analytics" class="view">
+      <iframe id="analytics-frame" title="Analytics"></iframe>
+    </div>
 
     <!-- View: Create Meeting -->
     <div id="view-create" class="view active">
@@ -1439,17 +1467,22 @@
     list:     { title: 'My Meetings',      sub: '' },
     district: { title: 'District Meetings', sub: 'All meetings in your district' },
     zone:     { title: 'Zone Meetings',     sub: 'All meetings across your zone' },
-    state:    { title: 'State Meetings',    sub: 'All meetings across the state' }
+    state:    { title: 'State Meetings',    sub: 'All meetings across the state' },
+    analytics:{ title: 'Analytics',         sub: '' }
   };
   function showView(view) {
-    ['create','manage','list','district','zone','state'].forEach(function(v) {
+    ['create','manage','list','district','zone','state','analytics'].forEach(function(v) {
       var vEl = document.getElementById('view-' + v);
       var nEl = document.getElementById('nav-'  + v);
       if (vEl) vEl.classList.remove('active');
       if (nEl) nEl.classList.remove('active');
     });
+    AN_VIEWS.forEach(function(s) { var n = document.getElementById('nav-an-' + s); if (n) n.classList.remove('active'); });
+    document.querySelector('.content-area').classList.toggle('analytics-on', view === 'analytics');
+    document.getElementById('topbar-open').style.display = view === 'analytics' ? '' : 'none';
     document.getElementById('view-' + view).classList.add('active');
-    document.getElementById('nav-'  + view).classList.add('active');
+    var navEl = document.getElementById('nav-' + view);
+    if (navEl) navEl.classList.add('active');
     clearAlerts();
     document.getElementById('topbar-title').textContent = TOPBAR[view].title;
     document.getElementById('topbar-sub').textContent   = TOPBAR[view].sub;
@@ -1461,6 +1494,38 @@
     // Close sidebar on mobile after navigation
     document.getElementById('sidebar').classList.remove('mob-open');
     document.getElementById('mob-overlay').classList.remove('mob-open');
+  }
+
+  // ── Analytics: the portal pages inside the app ────────────────
+  // Analytics used to leave the app for report.html, and each of its four
+  // pages was a new page, so getting back meant pressing Back again and again.
+  // Now the portal opens here with ?embed=1, which hides its own menu, and the
+  // menu on the left stays. One page holds all four sections, so after the
+  // first load a switch is instant, and nothing goes into the browser history.
+  // The pages themselves are unchanged and still open on their own to anyone.
+  var AN_VIEWS = ['overview','reports','perf','rel'];
+  var AN_PAGE  = { overview:'report.html', reports:'districtreports.html', perf:'teamperformance.html', rel:'stakeholders.html' };
+  var AN_TOPBAR = {
+    overview: { title: 'Overview',         sub: 'Meeting summary across the state' },
+    reports:  { title: 'District Reports', sub: 'District-wise analytics and meeting details' },
+    perf:     { title: 'Team Performance', sub: 'Who did how many meetings' },
+    rel:      { title: 'Stakeholders',     sub: 'Relationships with government offices over time' }
+  };
+  function showAnalytics(section) {
+    if (!AN_TOPBAR[section]) section = 'overview';
+    showView('analytics');
+    document.getElementById('nav-an-' + section).classList.add('active');
+    document.getElementById('topbar-title').textContent = AN_TOPBAR[section].title;
+    document.getElementById('topbar-sub').textContent   = AN_TOPBAR[section].sub;
+    document.getElementById('topbar-open').href = AN_PAGE[section];
+    var fr = document.getElementById('analytics-frame'), w = null;
+    try { w = fr.contentWindow; } catch (e) {}
+    // Already loaded: switch the section inside it.
+    try { if (w && typeof w.showView === 'function' && /[?&]embed=1/.test(w.location.search)) { w.showView(section); return; } } catch (e) {}
+    var url = 'report.html?embed=1&view=' + section;
+    // Still loading: replace, so the history gets no entry.
+    if (fr.getAttribute('src')) { try { w.location.replace(url); return; } catch (e) {} }
+    fr.setAttribute('src', url);
   }
 
   // ── District switcher (dual-charge leads) ─────────────────────
@@ -4615,6 +4680,15 @@
     'Zone Meetings': 'ज़ोन की बैठकें',
     'State Meetings': 'राज्य की बैठकें',
     'Analytics': 'विश्लेषण',
+    'Overview': 'सारांश',
+    'District Reports': 'जिला रिपोर्ट',
+    'Team Performance': 'टीम का प्रदर्शन',
+    'Stakeholders': 'हितधारक',
+    'Open in new tab': 'नए टैब में खोलें',
+    'Meeting summary across the state': 'पूरे राज्य की बैठकों का सारांश',
+    'District-wise analytics and meeting details': 'जिलेवार विश्लेषण और बैठकों का विवरण',
+    'Who did how many meetings': 'किसने कितनी बैठकें कीं',
+    'Relationships with government offices over time': 'सरकारी कार्यालयों से समय के साथ संबंध',
     'Logout': 'लॉग आउट',
     'Plan Your Meeting': 'अपनी बैठक नियोजित करें',
     'Plan your upcoming meetings': 'आगामी बैठकों की योजना बनाएँ',
