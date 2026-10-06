@@ -2708,6 +2708,7 @@ function postponeMeeting_(payload) {
           planSheet.getRange(i+1, 6).setValue(payload.newDate);    // F new date
           planSheet.getRange(i+1, 14).setValue('Postponed');       // N keep as Postponed so user sees it was rescheduled
           planSheet.getRange(i+1, 17).setValue('Postponed from ' + payload.originalDate + (payload.reason ? ': ' + payload.reason : '')); // Q reason
+          calEventMove_(pd[i][COL_CAL_EVENT - 1], payload.newDate, pd[i][6], pd[i][7]);   // same time, new day
           break;
         }
       }
@@ -2807,6 +2808,7 @@ function cancelMeeting_(payload) {
 
     // Update status in Plan Meetings to "Cancelled" - NEVER delete, keeps master ledger intact for dashboard reporting
     sheet.getRange(rowIdx + 1, 14).setValue('Cancelled');
+    calEventDrop_(rowData[COL_CAL_EVENT - 1]);   // not held: off the officer's calendar
 
     invalidateUser((payload.email || '').trim().toLowerCase());
     return { success: true };
@@ -2818,15 +2820,26 @@ function cancelMeeting_(payload) {
 // ------------------------------------------------------------
 //  DELETE MEETING
 // ------------------------------------------------------------
+// A deleted meeting, follow-ups included, kept showing in Manage Meetings,
+// the district lists and the portal for up to fifteen minutes, and stayed on
+// the officer's calendar for good: this was the one write that cleared no
+// cache and left the calendar alone (team feedback, 6 Oct 2026). It also had
+// no lock, and anyone allowed to delete could name any meeting. Now it takes
+// the lock, deletes only the person's own meeting (State: any), removes the
+// calendar event and clears every list the meeting was in.
 function deleteMeeting(meetingId, email) {
+  return withScriptLock_(function() { return deleteMeeting_(meetingId, email); });
+}
+function deleteMeeting_(meetingId, email) {
   try {
+    meetingId = (meetingId || '').toString().trim();
+    email     = (email || '').toString().trim().toLowerCase();
+    var emp  = email ? getEmployeeByEmail(email) : null;
+    if (!emp) return { success: false, message: 'ACCESS_REVOKED' };
+    var role = emp.role ? emp.role.toString().trim().toLowerCase() : '';
     // Field role cannot delete - prevents fake-meeting create-then-delete (full audit trail)
-    if (email) {
-      var emp = getEmployeeByEmail(email.trim().toLowerCase());
-      var role = emp && emp.role ? emp.role.toString().trim().toLowerCase() : '';
-      if (role === 'field') {
-        return { success: false, message: 'Delete not allowed for Field role.' };
-      }
+    if (role === 'field') {
+      return { success: false, message: 'Delete not allowed for Field role.' };
     }
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(MEETINGS_SHEET);
@@ -2834,7 +2847,15 @@ function deleteMeeting(meetingId, email) {
     var data = sheet.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
       if ((data[i][0] || '').toString() === meetingId) {
+        var owner = (data[i][4] || '').toString().trim().toLowerCase();
+        if (owner !== email && role !== 'state') {
+          return { success: false, message: 'You can delete only your own meetings.' };
+        }
+        var eventId = data[i][COL_CAL_EVENT - 1], district = (data[i][1] || '').toString().trim();
         sheet.deleteRow(i + 1);
+        calEventDrop_(eventId);
+        invalidateUser(owner, district);
+        if (email !== owner) invalidateUser(email);
         return { success: true };
       }
     }
@@ -5720,6 +5741,31 @@ function parseStart_(dateStr, timeStr) {
 }
 function durMin_(s){ s=(s||'').toString().toLowerCase(); var m=s.match(/(\d+)/); var n=m?parseInt(m[1],10):0; if(s.indexOf('hour')>=0||s.indexOf('hr')>=0) return (n||1)*60; if(s.indexOf('min')>=0) return n||30; return 60; }
 
+// The sync only ever added events, so a meeting deleted, not held or moved
+// stayed on the calendar as first planned (6 Oct 2026). These keep the event
+// in step. Best effort: a calendar error never fails the save it follows.
+function calEventOf_(eventId) {
+  eventId = (eventId || '').toString().trim();
+  if (!eventId) return null;
+  try { return CalendarApp.getDefaultCalendar().getEventById(eventId); } catch (e) { return null; }
+}
+function calEventDrop_(eventId) {
+  var ev = calEventOf_(eventId);
+  if (!ev) return false;
+  try { ev.deleteEvent(); return true; } catch (e) { return false; }
+}
+function calEventMove_(eventId, dateVal, timeVal, durVal) {
+  var ev = calEventOf_(eventId);
+  if (!ev) return false;
+  try {
+    var start = parseStart_(fmtDateVal(dateVal), fmtTimeVal(timeVal));
+    if (!start) return false;
+    if (ev.isAllDayEvent()) ev.setAllDayDate(start);
+    else ev.setTime(start, new Date(start.getTime() + durMin_(durVal) * 60000));
+    return true;
+  } catch (e) { return false; }
+}
+
 // mode 'test' invites only the admin (review); 'live' invites the officer + stores the event id.
 function syncCalendarEvents(mode, limit) {
   mode = mode || 'test'; limit = limit || 20;
@@ -5732,7 +5778,8 @@ function syncCalendarEvents(mode, limit) {
   for (var i = 1; i < data.length && done < limit; i++) {
     if (!data[i][0]) continue;
     var status = (data[i][13]||'Planned').toString();
-    if (status !== 'Planned' && status !== 'Follow-up') continue;
+    // Postponed is still upcoming: one moved before its event was made gets one at the new date.
+    if (status !== 'Planned' && status !== 'Follow-up' && status !== 'Postponed') continue;
     if ((data[i][COL_CAL_EVENT-1]||'').toString().trim()) continue;   // already synced
     var timeStr = (data[i][6]||'').toString();
     var hasTime = /(\d{1,2}):(\d{2})/.test(timeStr);                  // no time -> all-day event, never a fake 10am
