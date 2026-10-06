@@ -1905,7 +1905,7 @@ function saveMeeting(data) {
       data.meetingDate  || '',  // F  Meeting Date
       data.meetingTime  || '',  // G  Meeting Time
       data.duration     || '',  // H  Duration
-      data.meetingType  || '',  // I  Meeting Type
+      meetingTypeOf_(data.meetingType),  // I  Meeting Type
       data.adhikariName || '',  // J  Stakeholder Name
       data.adhikariPost || '',  // K  Stakeholder Post
       data.purpose      || '',  // L  Meeting Purpose
@@ -2369,7 +2369,7 @@ function conductMeetingNow_(payload) {
             followUpId, payload.district||'', payload.employeeName||'',
             payload.designation||'', payload.email||'',
             payload.followUp.date, payload.followUp.time||'',
-            payload.duration||'', payload.meetingType||'',
+            payload.duration||'', meetingTypeOf_(payload.meetingType),
             payload.adhikariName||'', payload.adhikariPost||'',
             payload.purpose||'', '',
             'Follow-up', '', '', '',
@@ -5689,6 +5689,17 @@ var COL_CAL_EVENT = 23;   // W in Plan Meetings
 // own block, which is what the sheets already carried and is only a proxy.
 var COL_PLAN_SKBLOCK = 24;   // X in Plan Meetings
 var COL_CON_SKBLOCK  = 31;   // AE in Conducted Meetings
+// Meeting types (6 Oct 2026, from the team's feedback): One-on-One, Group/Joint
+// Meeting and Field Visit. Group Meeting and Joint Visit were hard to tell
+// apart, and a Dept. Review is a group meeting too. A page still open from
+// before saves under the new name, and older rows are counted under it.
+var MEETING_TYPE_ALIAS = { 'group meeting':'Group/Joint Meeting', 'joint visit':'Group/Joint Meeting',
+                           'dept. review':'Group/Joint Meeting' };
+function meetingTypeOf_(t) {
+  t = (t || '').toString().trim();
+  return MEETING_TYPE_ALIAS[t.toLowerCase()] || t;
+}
+
 // The official's department (Stakeholder Type), picked from the "Stakeholder
 // Type" tab when planning and carried to the conducted row (6 Oct 2026).
 var COL_PLAN_DEPT    = 25;   // Y in Plan Meetings
@@ -6655,7 +6666,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       var row    = planData[i];
       var dist   = (row[1]  || '').toString().trim();
       var status = (row[13] || 'Planned').toString().trim().toLowerCase();
-      var type   = (row[8]  || '').toString().trim();
+      var type   = meetingTypeOf_(row[8]);
       var purp   = (row[11] || '').toString().trim();
       var dateV  = row[5];
 
@@ -6741,7 +6752,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
         if (!isState && cdist.toUpperCase() !== userDistrict.toUpperCase()) continue;
         if (testE[(cr[4] || '').toString().trim().toLowerCase()]) continue;
         var cEmp    = (cr[2] ||'').toString().trim();
-        var cType   = (cr[8] ||'').toString().trim();
+        var cType   = meetingTypeOf_(cr[8]);
         var cStkP   = (cr[10]||'').toString().trim();
         var cMom    = (cr[17]||'').toString().trim();
         if (cEmp)  empSet[cEmp] = true;

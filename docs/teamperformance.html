@@ -392,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.11 &middot; 6 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.12 &middot; 6 Oct 2026</span>
   </div>
 </div>
 
@@ -650,7 +650,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.11 &middot; 6 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.12 &middot; 6 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -1044,8 +1044,8 @@
     // ─ Types as chips with bars ─
     var types  = d.byType || [];
     var maxT   = types.reduce(function(m,x){ return Math.max(m,x.count||0); },1);
-    var tIco   = {'One-on-One':'👤','Group Meeting':'👥','Joint Visit':'🤝','Dept. Review':'📋','Field Visit':'🌾'};
-    var tColor = {'One-on-One':'#8B1212','Group Meeting':'#3B82F6','Joint Visit':'#10B981','Dept. Review':'#8B5CF6','Field Visit':'#14B8A6'};
+    var tIco   = {'One-on-One':'👤','Group/Joint Meeting':'👥','Field Visit':'🌾'};
+    var tColor = {'One-on-One':'#8B1212','Group/Joint Meeting':'#3B82F6','Field Visit':'#14B8A6'};
     document.getElementById('ov-types').innerHTML = types.map(function(tp) {
       var p = Math.round((tp.count/maxT)*100);
       var c = tColor[tp.name] || '#6B7280';

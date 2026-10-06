@@ -263,7 +263,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Meeting type cards */
-    .mtg-type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 10px; margin-bottom: 4px; }
+    .mtg-type-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 190px)); gap: 10px; margin-bottom: 4px; }
     .mtg-type-card { border: 2px solid #E5E7EB; border-radius: 10px; padding: 14px 8px; text-align: center; cursor: pointer; background: #fff; transition: all 0.15s; }
     .mtg-type-card:hover   { border-color: #7B1010; background: #FEF2F2; }
     .mtg-type-card.selected { border-color: #7B1010; background: #FEF2F2; box-shadow: 0 0 0 3px rgba(123,16,16,0.13); }
@@ -570,7 +570,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.11 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.12 &middot; 6 Oct 2026</div>
   </div>
 </div>
 
@@ -612,14 +612,8 @@
           <div class="mtg-type-card" data-val="One-on-One" onclick="setMeetingType('One-on-One', this)">
             <div class="mtc-icon">👤</div><div class="mtc-name">One-on-One</div>
           </div>
-          <div class="mtg-type-card" data-val="Group Meeting" onclick="setMeetingType('Group Meeting', this)">
-            <div class="mtc-icon">👥</div><div class="mtc-name">Group Meeting</div>
-          </div>
-          <div class="mtg-type-card" data-val="Joint Visit" onclick="setMeetingType('Joint Visit', this)">
-            <div class="mtc-icon">🤝</div><div class="mtc-name">Joint Visit</div>
-          </div>
-          <div class="mtg-type-card" data-val="Dept. Review" onclick="setMeetingType('Dept. Review', this)">
-            <div class="mtc-icon">📋</div><div class="mtc-name">Dept. Review</div>
+          <div class="mtg-type-card" data-val="Group/Joint Meeting" onclick="setMeetingType('Group/Joint Meeting', this)">
+            <div class="mtc-icon">👥</div><div class="mtc-name">Group/Joint Meeting</div>
           </div>
           <div class="mtg-type-card" data-val="Field Visit" onclick="setMeetingType('Field Visit', this)">
             <div class="mtc-icon">🌾</div><div class="mtc-name">Field Visit</div>
@@ -4072,9 +4066,10 @@
     put('colleagueName'); put('colleaguePost');
 
     if (d._type) {
-      selectedMeetingType = d._type;
+      // A draft from before the types were merged (6 Oct 2026) comes back as Group/Joint.
+      if (/^(Group Meeting|Joint Visit|Dept\. Review)$/.test(d._type)) d._type = 'Group/Joint Meeting';
       var tc = document.querySelector('.mtg-type-card[data-val="' + d._type + '"]');
-      if (tc) tc.classList.add('selected');
+      if (tc) { selectedMeetingType = d._type; tc.classList.add('selected'); }
     }
     if (d._dur) {
       selectedDuration = d._dur;
@@ -4704,6 +4699,7 @@
     'Joint Visit': 'संयुक्त भ्रमण',
     'Dept. Review': 'विभागीय समीक्षा',
     'Field Visit': 'क्षेत्र भ्रमण',
+    'Group/Joint Meeting': 'सामूहिक / संयुक्त बैठक',
     'Meeting District': 'बैठक का जिला',
     'Which district is this meeting in?': 'यह बैठक किस जिले में है?',
     '- Select District -': '- जिला चुनें -',
