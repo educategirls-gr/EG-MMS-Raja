@@ -550,7 +550,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.8 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.9 &middot; 6 Oct 2026</div>
   </div>
 </div>
 
@@ -635,6 +635,14 @@
               <button type="button" class="dur-btn" data-val="Half Day" onclick="setDuration('Half Day', this)">Half Day</button>
               <button type="button" class="dur-btn" data-val="Full Day" onclick="setDuration('Full Day', this)">Full Day</button>
             </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field full">
+            <label>Stakeholder Type (Department) <span class="req">*</span></label>
+            <select id="stakeholderType">
+              <option value="">Loading...</option>
+            </select>
           </div>
         </div>
         <div class="form-row">
@@ -1404,6 +1412,7 @@
 
     gasFetch('getDropdownData', { email: SESSION.email }, populateDropdowns, function() {
       document.getElementById('adhikariPost').innerHTML   = '<option value="">- Error loading -</option>';
+      document.getElementById('stakeholderType').innerHTML = '<option value="">- Error loading -</option>';
       document.getElementById('meetingPurpose').innerHTML = '<option value="">- Error loading -</option>';
     });
 
@@ -3172,6 +3181,15 @@
     paintMetLine();
     var pdSel = document.getElementById('plan-district');
     if (pdSel) pdSel.addEventListener('change', refreshBlockOptions);
+    // The departments come from the "Stakeholder Type" tab of the sheet.
+    var deptSel = document.getElementById('stakeholderType');
+    if (deptSel) {
+      deptSel.innerHTML = '<option value="">Select Type / Department</option>';
+      (data.departments || []).forEach(function(s) {
+        var o = document.createElement('option'); o.value = s; o.textContent = s;
+        deptSel.appendChild(o);
+      });
+    }
     var postSel = document.getElementById('adhikariPost');
     postSel.innerHTML = '<option value="">Select Post</option>';
     (data.stakeholders || []).forEach(function(s) {
@@ -3324,7 +3342,7 @@
   // The AM/PM box is the usual one people miss, because the hour and minute
   // beside it look complete.
   function markFields(ids) {
-    ['meetingDate','mt-h','mt-m','mt-ap','adhikariPost','adhikariName','meetingPurpose','meetingAgenda']
+    ['meetingDate','mt-h','mt-m','mt-ap','stakeholderType','adhikariPost','adhikariName','meetingPurpose','meetingAgenda']
       .forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
@@ -3358,6 +3376,7 @@
     function need(ok, label, ids) { if (!ok) { missing.push(label); badIds = badIds.concat(ids); } }
     need(date,     'Meeting Date', ['meetingDate']);
     need(time,     'Meeting Time (choose hour, minute and AM/PM)', ['mt-h','mt-m','mt-ap']);
+    need(v('stakeholderType'), 'Stakeholder Type (Department)', ['stakeholderType']);
     need(apost,    'Stakeholder Post', ['adhikariPost']);
     need(aname,    'Stakeholder Name', ['adhikariName']);
     need(purpose2, 'Meeting Purpose', ['meetingPurpose']);
@@ -3377,7 +3396,7 @@
       block: SESSION.block, designation: SESSION.designation || SESSION.role,
       meetingDate: date, meetingTime: time, duration: selectedDuration,
       meetingType: selectedMeetingType, adhikariName: aname, adhikariPost: apost,
-      adhikariBlock: v('adhikariBlock'),
+      adhikariBlock: v('adhikariBlock'), department: v('stakeholderType'),
       purpose: purpose2, agenda: agenda,
       colleagueName: v('colleagueName'), colleaguePost: v('colleaguePost')
     };
@@ -3920,7 +3939,7 @@
   // Attached files are deliberately not kept, for the same reason photos are
   // not: they do not fit in browser storage. The restore line says so.
   var _PLAN_FIELDS = ['plan-district','meetingDate','mt-h','mt-m','mt-ap',
-                      'adhikariPost','otherPost','adhikariName','adhikariBlock',
+                      'stakeholderType','adhikariPost','otherPost','adhikariName','adhikariBlock',
                       'meetingPurpose','otherPurpose','meetingAgenda',
                       'colleagueName','colleaguePost'];
 
@@ -3979,6 +3998,7 @@
     put('meetingDate'); put('mt-h'); put('mt-m'); put('mt-ap');
     // onPostChange clears the Other box whenever the post is not Other, so the
     // post has to be settled before the Other box is filled. Same for purpose.
+    put('stakeholderType');
     put('adhikariPost');    onPostChange();    put('otherPost');
     put('meetingPurpose');  onPurposeChange(); put('otherPurpose');
     put('adhikariName'); put('meetingAgenda');
@@ -4494,7 +4514,7 @@
   function resetForm() {
     // Covers Reset and a successful save, which both land here.
     clearPlanDraft();
-    ['mt-h','mt-m','mt-ap','adhikariName','adhikariPost','otherPost',
+    ['mt-h','mt-m','mt-ap','adhikariName','stakeholderType','adhikariPost','otherPost',
      'meetingPurpose','otherPurpose','meetingAgenda','colleagueName','colleaguePost'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
     });
@@ -4658,6 +4678,8 @@
     'Accompanying Colleagues': 'साथ जाने वाले सहकर्मी',
     'Tap a name to add or remove. You can pick more than one:': 'जोड़ने या हटाने के लिए नाम पर टैप करें। एक से अधिक चुन सकते हैं:',
     'Colleague Names': 'सहकर्मियों के नाम',
+    'Stakeholder Type (Department)': 'हितधारक प्रकार (विभाग)',
+    'Select Type / Department': 'प्रकार / विभाग चुनें',
     'Pick from the list, or type names separated by commas': 'सूची से चुनें, या नाम अल्पविराम (,) से अलग करके लिखें',
     'Designations': 'पदनाम',
     'Filled in from the list': 'सूची से अपने आप भरेगा',

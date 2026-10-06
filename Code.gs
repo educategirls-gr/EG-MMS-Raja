@@ -1585,6 +1585,49 @@ function postsWrite_(list) {
   } catch (e) { return 0; }
 }
 
+// Departments (Stakeholder Type), the same way: the "Stakeholder Type" tab,
+// column A under its header, with a copy in Script Properties.
+var DEPTS_KEY = 'DEPTS_MIRROR';
+function deptsRead_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('EG_DEPTS');
+  if (cached) { try { return JSON.parse(cached); } catch (e) {} }
+  var copy = null;
+  try { copy = JSON.parse(PropertiesService.getScriptProperties().getProperty(DEPTS_KEY) || 'null'); } catch (e2) {}
+  if (copy && copy.length) {
+    try { cache.put('EG_DEPTS', JSON.stringify(copy), 600); } catch (e3) {}
+    return copy;
+  }
+  var list = deptsReadFromSheet_();
+  if (!list) return [];
+  deptsWrite_(list);
+  return list;
+}
+function deptsReadFromSheet_() {
+  try {
+    var ws = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Stakeholder Type');
+    if (!ws) return null;
+    var d = ws.getDataRange().getValues(), out = [];
+    for (var i = 1; i < d.length; i++) { if (d[i][0]) out.push(d[i][0].toString().trim()); }
+    return uniqList_(out);
+  } catch (e) { return null; }
+}
+function deptsWrite_(list) {
+  try {
+    PropertiesService.getScriptProperties().setProperty(DEPTS_KEY, JSON.stringify(list));
+    CacheService.getScriptCache().put('EG_DEPTS', JSON.stringify(list), 600);
+    return list.length;
+  } catch (e) { return 0; }
+}
+// Editor helper: refresh the department copy after editing the Stakeholder Type tab.
+function DEPT_refresh() {
+  var list = deptsReadFromSheet_();
+  if (!list) { Logger.log('Could not read the Stakeholder Type sheet - Sheets is not answering. Try again in a minute.'); return 0; }
+  deptsWrite_(list);
+  Logger.log('Department copy refreshed: ' + list.length + ' departments.' + String.fromCharCode(10) + list.join(', '));
+  return list.length;
+}
+
 // Editor helper: refresh the post copy from the Sheet. calendarJob does this
 // hourly; run it yourself after editing the Officials sheet.
 function POST_refresh() {
@@ -1605,6 +1648,7 @@ function getDropdownData(email) {
   // Sheets stopped answering on 17 Sep 2026 this read hung for six minutes and
   // took the whole Plan Meeting form down with it.
   var stakeholders = postsRead_();
+  var departments  = deptsRead_();
   var purposes = purposesRead_();
 
   // Blocks per district, so the plan form can offer the block a block-level
@@ -1670,7 +1714,7 @@ function getDropdownData(email) {
     if (metBefore.length > 600) metBefore.length = 600;
   } catch (mbe) { metBefore = []; }
 
-  return { stakeholders: stakeholders, purposes: purposes,
+  return { stakeholders: stakeholders, purposes: purposes, departments: departments,
            blocksByDistrict: blocksByDistrict, metBefore: metBefore };
 }
 
@@ -1883,6 +1927,10 @@ function saveMeeting(data) {
       if (!sheet.getRange(1, COL_PLAN_SKBLOCK).getValue()) sheet.getRange(1, COL_PLAN_SKBLOCK).setValue('Stakeholder Block');
       sheet.getRange(newRow, COL_PLAN_SKBLOCK).setValue(data.adhikariBlock);
     }
+    if (data.department) {
+      if (!sheet.getRange(1, COL_PLAN_DEPT).getValue()) sheet.getRange(1, COL_PLAN_DEPT).setValue('Stakeholder Type');
+      sheet.getRange(newRow, COL_PLAN_DEPT).setValue(data.department);
+    }
 
     // ── Colleague email notification ──────────────────────────
     if (data.colleagueName && data.colleagueName.trim()) {
@@ -1964,6 +2012,7 @@ function getMyMeetings(email) {
           adhikariName: (sheetData[i][9]  || '').toString(),  // J
           adhikariPost: (sheetData[i][10] || '').toString(),  // K
           adhikariBlock: (sheetData[i][COL_PLAN_SKBLOCK-1] || '').toString(),  // X
+          department:   (sheetData[i][COL_PLAN_DEPT-1] || '').toString(),     // Y
           purpose:      (sheetData[i][11] || '').toString(),  // L
           agenda:       (sheetData[i][12] || '').toString(),  // M
           status:       (sheetData[i][13] || '').toString(),  // N
@@ -2275,6 +2324,8 @@ function conductMeetingNow_(payload) {
       for (var i = 1; i < pd.length; i++) {
         if ((pd[i][0] || '').toString() === payload.meetingId) {
           planRowIdx = i;
+          // the department as planned, for the MoM, the follow-up and the conducted row
+          if (!payload.department) payload.department = (pd[i][COL_PLAN_DEPT - 1] || '').toString().trim();
           break;
         }
       }
@@ -2323,6 +2374,7 @@ function conductMeetingNow_(payload) {
             fuNow2.toLocaleString('en-IN'), payload.meetingId
           ]);
           fuPlanSheet.getRange(fuPlanSheet.getLastRow(), 7).setNumberFormat('@'); // keep time as text
+          if (payload.department) fuPlanSheet.getRange(fuPlanSheet.getLastRow(), COL_PLAN_DEPT).setValue(payload.department);
         }
       } catch(fe) { followUpId = ''; }
     }
@@ -2374,6 +2426,10 @@ function conductMeetingNow_(payload) {
         skBlock = (planSheet.getRange(planRowIdx + 1, COL_PLAN_SKBLOCK).getValue() || '').toString().trim();
       }
       if (skBlock) cSheet.getRange(clr, COL_CON_SKBLOCK).setValue(skBlock);
+      if (payload.department) {
+        if (!cSheet.getRange(1, COL_CON_DEPT).getValue()) cSheet.getRange(1, COL_CON_DEPT).setValue('Stakeholder Type');
+        cSheet.getRange(clr, COL_CON_DEPT).setValue(payload.department);
+      }
       if (!cSheet.getRange(1, COL_CON_OUTCOME).getValue()) cSheet.getRange(1, COL_CON_OUTCOME).setValue('Outcome');
       var oc = (payload.outcome || '').toString().trim();
       if (oc) cSheet.getRange(clr, COL_CON_OUTCOME).setValue(oc);
@@ -2513,6 +2569,7 @@ function createMoMDoc(d, photoFolderUrl) {
   // Stakeholder
   sec('Stakeholder / Official');
   body.appendParagraph((d.adhikariName || '-') + '   |   ' + (d.adhikariPost || '-'));
+  if (d.department) body.appendParagraph('Department: ' + d.department);
 
   // Attendees
   sec('Attended By (EG Team)');
@@ -5622,6 +5679,10 @@ var COL_CAL_EVENT = 23;   // W in Plan Meetings
 // own block, which is what the sheets already carried and is only a proxy.
 var COL_PLAN_SKBLOCK = 24;   // X in Plan Meetings
 var COL_CON_SKBLOCK  = 31;   // AE in Conducted Meetings
+// The official's department (Stakeholder Type), picked from the "Stakeholder
+// Type" tab when planning and carried to the conducted row (6 Oct 2026).
+var COL_PLAN_DEPT    = 25;   // Y in Plan Meetings
+var COL_CON_DEPT     = 33;   // AG in Conducted Meetings
 // What the officer says came out of the meeting. Asked rather than inferred:
 // they were there, and this number will end up judging them, so a model's
 // guess is the wrong thing to build it on.
@@ -5661,6 +5722,7 @@ function syncCalendarEvents(mode, limit) {
     var officer = (data[i][4]||'').toString().trim();
     var title = 'GR Meeting: ' + (data[i][9]||'Stakeholder') + (data[i][11] ? ' (' + data[i][11] + ')' : '');
     var desc = 'Stakeholder: ' + (data[i][9]||'') + ' ' + (data[i][10]||'') +
+               ((data[i][COL_PLAN_DEPT-1]||'') ? '\nDepartment: ' + data[i][COL_PLAN_DEPT-1] : '') +
                '\nPurpose: ' + (data[i][11]||'') + '\nAgenda: ' + (data[i][12]||'') +
                '\nType: ' + (data[i][8]||'') + (data[i][17] ? '\nColleague: ' + data[i][17] : '') + '\nvia EG-MMS';
     var guests = (mode==='live') ? officer : REPORT_TEST_EMAIL;
@@ -5682,6 +5744,7 @@ function calendarJob() {
   try { EMP_refreshMirror(); } catch (e) {}
   try { PURPOSE_refresh(); }   catch (e) {}
   try { POST_refresh(); }      catch (e) {}
+  try { DEPT_refresh(); }      catch (e) {}
   return syncCalendarEvents('live', 30);
 }
 function installCalendarTrigger() {
@@ -6381,6 +6444,17 @@ function getReportData() {
     // conducted rows for the same meeting. Counting them flat made the portal's
     // district, team and stakeholder pages disagree with its own Overview,
     // which reads the current state of each meeting from the plan sheet.
+    // Stakeholder Type (department) from the plan row, or else the conducted row.
+    var deptOf = {};
+    [[MEETINGS_SHEET, COL_PLAN_DEPT], [CONDUCTED_SHEET, COL_CON_DEPT]].forEach(function(x) {
+      var rows = sheetRows_(x[0]) || [];
+      for (var r = 1; r < rows.length; r++) {
+        var did = (rows[r][0] || '').toString().trim(), dv = (rows[r][x[1] - 1] || '').toString().trim();
+        if (did && dv && !deptOf[did]) deptOf[did] = dv;
+      }
+    });
+    meetings.forEach(function(m) { m.department = deptOf[(m.meetingId || '').toString().trim()] || ''; });
+
     // The developer's test meetings stay out of the portal and the reports.
     var testIds = testMeetingIds_(testEmails);
     meetings = meetings.filter(function(m) { return !testIds[(m.meetingId || '').toString().trim()]; });
