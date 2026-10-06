@@ -376,7 +376,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.6 &middot; 2 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.7 &middot; 6 Oct 2026</span>
   </div>
 </div>
 
@@ -616,7 +616,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.6 &middot; 2 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.7 &middot; 6 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -729,18 +729,30 @@
   // Tries docs/data/*.json first (served instantly by the Pages CDN). If the
   // file is missing/stale/invalid, or the user asked for live, it falls back
   // to the live GAS endpoint - so the portal never breaks.
+  // Live first (6 Oct 2026). GitHub ran the snapshot job hours apart, not
+  // every 30 minutes, and a 06:03 snapshot hid three meetings conducted that
+  // morning; a meeting must show as soon as it is conducted. The server's copy
+  // is cleared on every save, so live is always current. The snapshot is now
+  // only the fallback when the live call fails, so the portal never comes up
+  // empty; the chip says when that is what is on screen.
   var _forceLive = false, _usingSnap = false, _snapAt = '';
   function snapFetch(snapFile, liveUrl, onOk, onErr) {
-    if (_forceLive) { fetchJSON(liveUrl, onOk, onErr); return; }
-    fetch(snapFile, { cache: 'no-store' })
-      .then(function(r){ if (!r.ok) throw new Error('no snap'); return r.json(); })
-      .then(function(j){
-        if (!j || j.success === false || (!j.meetings && !j.employees && !j.totals)) throw new Error('bad snap');
-        if (j._snapshotAt) _snapAt = j._snapshotAt;
-        _usingSnap = true; updateSnapNote();
-        onOk(j);
-      })
-      .catch(function(){ fetchJSON(liveUrl, onOk, onErr); });
+    function fromSnapshot() {
+      fetch(snapFile, { cache: 'no-store' })
+        .then(function(r){ if (!r.ok) throw new Error('no snap'); return r.json(); })
+        .then(function(j){
+          if (!j || j.success === false || (!j.meetings && !j.employees && !j.totals)) throw new Error('bad snap');
+          if (j._snapshotAt) _snapAt = j._snapshotAt;
+          _usingSnap = true; updateSnapNote();
+          onOk(j);
+        })
+        .catch(function(){ (onErr || function(){})(new Error('Server busy - please tap Refresh in a moment.')); });
+    }
+    fetchJSON(liveUrl, function(live) {
+      if (!live || live.success === false) { fromSnapshot(); return; }
+      _usingSnap = false; updateSnapNote();
+      onOk(live);
+    }, fromSnapshot);
   }
   function updateSnapNote() {
     var el = document.getElementById('snap-note'); if (!el) return;
