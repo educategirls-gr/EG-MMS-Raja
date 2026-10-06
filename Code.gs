@@ -656,7 +656,21 @@ function apiResponse(e, method) {
       result = { success:false, message:'BODY_MISSING' };
     } else if (PUBLIC[action]) {
       // ── No auth required ──────────────────────────────────────
-      if      (action === 'sendOTP')           result = sendOTP(e.parameter.email || '');
+      // Except that inside the app the analytics ask with scoped=1 and the
+      // person's token, and get only their own districts (see viewScope_).
+      var vSess = null, vScope = null, vAsk = (e.parameter.scoped === '1') && VIEW_SCOPED_ACTIONS[action];
+      if (vAsk) {
+        vSess = getSession(token);
+        if (vSess) {
+          vScope = viewScope_(vSess);
+          try { CacheService.getScriptCache().put('SESSION_' + token, JSON.stringify(vSess), 3600); } catch(se) {}
+        }
+      }
+      if      (vAsk && !vSess)                 result = { success: false, message: 'AUTH_REQUIRED' };
+      else if (vScope && action === 'getDashboardStats') result = getDashboardStats(vSess.email, false, '', vScope);
+      else if (vScope && action === 'getReportData')     result = scopeReportData_(getReportData(), vScope);
+      else if (vScope && action === 'getEmployeeMaster') result = scopeEmployees_(getEmployeeMaster(), vScope);
+      else if (action === 'sendOTP')           result = sendOTP(e.parameter.email || '');
       else if (action === 'verifyOTP')         result = verifyOTP(e.parameter.email || '', e.parameter.otp || '');
       else if (action === 'loginPassword')      result = loginPassword(e.parameter.email || '', (body.password || ''));   // body only: a password must never reach a log through the URL
       else if (action === 'getDashboardStats') result = getDashboardStats(e.parameter.email || '', e.parameter.all === '1');
@@ -6685,10 +6699,72 @@ function getAllReports(email) {
 // ------------------------------------------------------------
 //  DASHBOARD STATS - cards & reports data
 // ------------------------------------------------------------
-function getDashboardStats(email, allDistricts, activeDistrict) {
+// ── Analytics inside the app, cut to the person's districts ─────────────
+// Inside the app every login saw the whole state's analytics (team feedback,
+// 6 Oct 2026). Alok: "jo district ka login kare uske district ka, State wala
+// pure state ka". So with scoped=1 and a token the three portal calls answer
+// for the signed-in person's districts only: their district plus any
+// additional ones (column H) for District and Field, the zone for a Zone
+// lead, everything for State. Their own meetings filed elsewhere (a State-
+// level district such as JAIPUR) count too. The open portal, report.html on
+// its own, is unchanged and still shows everything.
+var VIEW_SCOPED_ACTIONS = { getDashboardStats: 1, getReportData: 1, getEmployeeMaster: 1 };
+function viewScope_(session) {
+  var role = (session && session.role || '').toString();
+  if (role === 'State') return null;   // the whole state
+  var ds = [];
+  if (role === 'Zone') ds = (ZONE_DISTRICTS[findZoneKey_(session.zone || '')] || []).slice();
+  else ds = (session.districts && session.districts.length) ? session.districts.slice() : [session.district];
+  var set = {}, names = [];
+  ds.forEach(function(d) {
+    var k = normDist_(d);
+    if (k && !set[k]) { set[k] = 1; names.push(d.toString().trim()); }
+  });
+  return { districts: set, names: names, email: (session.email || '').toString().trim().toLowerCase() };
+}
+function inViewScope_(scope, district, email) {
+  if (!scope) return true;
+  if (scope.districts[normDist_(district)]) return true;
+  return !!email && email.toString().trim().toLowerCase() === scope.email;
+}
+// The portal's meeting list carries no email, so the person's own meetings
+// are found by id in the plan and conducted rows.
+function ownMeetingIds_(email) {
+  var ids = {};
+  [MEETINGS_SHEET, CONDUCTED_SHEET].forEach(function(name) {
+    var rows = sheetRows_(name) || [];
+    for (var i = 1; i < rows.length; i++) {
+      if ((rows[i][4] || '').toString().trim().toLowerCase() === email) ids[(rows[i][0] || '').toString().trim()] = 1;
+    }
+  });
+  return ids;
+}
+function scopeReportData_(full, scope) {
+  if (!full || full.success === false || !scope) return full;
+  var own = ownMeetingIds_(scope.email), out = {};
+  for (var k in full) out[k] = full[k];
+  out.meetings = (full.meetings || []).filter(function(m) {
+    return scope.districts[normDist_(m.district)] || own[(m.meetingId || '').toString().trim()];
+  });
+  out.scope = scope.names;
+  return out;
+}
+function scopeEmployees_(full, scope) {
+  if (!full || full.success === false || !scope) return full;
+  var out = {};
+  for (var k in full) out[k] = full[k];
+  out.employees = (full.employees || []).filter(function(e) { return scope.districts[normDist_(e.district)]; });
+  out.scope = scope.names;
+  return out;
+}
+
+function getDashboardStats(email, allDistricts, activeDistrict, scope) {
   try {
     var statKey = 'stats_' + email.trim().toLowerCase() + '_' + (allDistricts ? '1' : '0') + '_' + (activeDistrict || '').toString().trim().toLowerCase();
-    var statHit = cGet(statKey);
+    // A scoped answer is not kept: a save in the district clears only the
+    // saver's keys, and the lead must see it at once. The rows themselves come
+    // from the shared sheet copies, so working it out again is quick.
+    var statHit = scope ? null : cGet(statKey);
     if (statHit) return statHit;
 
     var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -6696,7 +6772,11 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
     var userRole     = emp ? (emp.role     || 'Field') : 'Field';
     // activeDistrict (from the switcher) overrides the user's primary when filtering
     var userDistrict = (activeDistrict || (emp ? emp.district : '') || '').toString();
-    var isState      = allDistricts || (userRole === 'State');
+    var isState      = !scope && (allDistricts || (userRole === 'State'));
+    function keepRow(dist, rowEmail) {
+      if (scope) return inViewScope_(scope, dist, rowEmail);
+      return isState || dist.toUpperCase() === userDistrict.toUpperCase();
+    }
 
     // ── Plan Meetings ──────────────────────────────────────────
     var planSheet = ss.getSheetByName(MEETINGS_SHEET);
@@ -6717,7 +6797,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       var purp   = (row[11] || '').toString().trim();
       var dateV  = row[5];
 
-      if (!isState && dist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+      if (!keepRow(dist, row[4])) continue;
       if (testE[(row[4] || '').toString().trim().toLowerCase()]) continue;
 
       var dKey = dist.charAt(0).toUpperCase() + dist.slice(1).toLowerCase();
@@ -6796,7 +6876,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       for (var ci = 1; ci < cd.length; ci++) {
         var cr      = cd[ci];
         var cdist   = (cr[1]||'').toString().trim();
-        if (!isState && cdist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+        if (!keepRow(cdist, cr[4])) continue;
         if (testE[(cr[4] || '').toString().trim().toLowerCase()]) continue;
         var cEmp    = (cr[2] ||'').toString().trim();
         var cType   = meetingTypeOf_(cr[8]);
@@ -6812,7 +6892,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
         var rr    = cd[ri];
         if (!(rr[0] || '').toString().trim()) continue;   // trailing blank rows are not meetings
         var rdist = (rr[1]||'').toString().trim();
-        if (!isState && rdist.toUpperCase() !== userDistrict.toUpperCase()) continue;
+        if (!keepRow(rdist, rr[4])) continue;
         if (testE[(rr[4] || '').toString().trim().toLowerCase()]) continue;
         recent.push({
           meetingId:       (rr[0] ||'').toString(),
@@ -6853,6 +6933,7 @@ function getDashboardStats(email, allDistricts, activeDistrict) {
       topStakeholderPost:  topStkPost,
       topStakeholderCount: topStkCount
     };
+    if (scope) { statsResult.scope = scope.names; return statsResult; }
     cPut(statKey, statsResult, C_TTL_LIVE);
     return statsResult;
   } catch(err) {

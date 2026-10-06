@@ -570,7 +570,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.13 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.14 &middot; 6 Oct 2026</div>
   </div>
 </div>
 
@@ -1510,7 +1510,9 @@
     showView('analytics');
     document.getElementById('nav-an-' + section).classList.add('active');
     document.getElementById('topbar-title').textContent = AN_TOPBAR[section].title;
-    document.getElementById('topbar-sub').textContent   = AN_TOPBAR[section].sub;
+    // Below State the analytics are the person's own districts (viewScope_ in Code.gs).
+    document.getElementById('topbar-sub').textContent   = (section === 'overview' && SESSION.role !== 'State')
+      ? 'Meeting summary for your area' : AN_TOPBAR[section].sub;
     document.getElementById('topbar-open').href = AN_PAGE[section];
     var fr = document.getElementById('analytics-frame'), w = null;
     try { w = fr.contentWindow; } catch (e) {}
@@ -4681,6 +4683,7 @@
     'Stakeholders': 'हितधारक',
     'Open in new tab': 'नए टैब में खोलें',
     'Meeting summary across the state': 'पूरे राज्य की बैठकों का सारांश',
+    'Meeting summary for your area': 'आपके क्षेत्र की बैठकों का सारांश',
     'District-wise analytics and meeting details': 'जिलेवार विश्लेषण और बैठकों का विवरण',
     'Who did how many meetings': 'किसने कितनी बैठकें कीं',
     'Relationships with government offices over time': 'सरकारी कार्यालयों से समय के साथ संबंध',

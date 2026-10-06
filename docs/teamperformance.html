@@ -392,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.13 &middot; 6 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.14 &middot; 6 Oct 2026</span>
   </div>
 </div>
 
@@ -410,6 +410,7 @@
       <div class="tb-sub"   id="topbar-sub"><span class="state-name"></span>: organisation-wide meeting summary</div>
     </div>
     <div class="topbar-right">
+      <span id="scope-note" style="display:none;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.18);padding:5px 10px;border-radius:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw;"></span>
       <span id="snap-note" style="display:none;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,0.18);padding:5px 10px;border-radius:20px;white-space:nowrap;"></span>
       <span class="tb-badge">📅 <span id="top-date"></span></span>
       <button class="btn-refresh" onclick="refreshData()">&#x21BA;<span class="btn-refresh-txt"> Refresh</span></button>
@@ -650,7 +651,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.13 &middot; 6 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.14 &middot; 6 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -687,7 +688,7 @@
   function dsOne(id)   { var p = dsGet(id); return p.length === 1 ? p[0] : ''; }
   function dsLabel(id) {
     var p = dsGet(id);
-    return p.length === 0 ? 'All Districts' : (p.length === 1 ? p[0] : p.length + ' districts');
+    return p.length === 0 ? (SCOPED ? 'My Districts' : 'All Districts') : (p.length === 1 ? p[0] : p.length + ' districts');
   }
   function dsRender(id, values, onChange) {
     var box = document.getElementById(id);
@@ -782,11 +783,19 @@
         })
         .catch(function(){ (onErr || function(){})(new Error('Server busy - please tap Refresh in a moment.')); });
     }
+    // The snapshot is the whole state, so it is never shown in place of an
+    // answer cut to one person's districts: they get the error instead.
+    function noSnapshot(e) { (onErr || function(){})(e); }
     fetchJSON(liveUrl, function(live) {
-      if (!live || live.success === false) { fromSnapshot(); return; }
+      if (!live || live.success === false) {
+        if (SCOPED) { noSnapshot(new Error(live && live.message === 'AUTH_REQUIRED'
+                        ? 'Your sign-in has run out. Please log out and sign in again.'
+                        : 'Server busy - please tap Refresh in a moment.')); return; }
+        fromSnapshot(); return;
+      }
       _usingSnap = false; updateSnapNote();
       onOk(live);
-    }, fromSnapshot);
+    }, SCOPED ? noSnapshot : fromSnapshot);
   }
   function updateSnapNote() {
     var el = document.getElementById('snap-note'); if (!el) return;
@@ -803,7 +812,21 @@
   // one happens to exist (harmless; these endpoints are public).
   var TOKEN = '';
   try { TOKEN = sessionStorage.getItem('eg_grm_token') || ''; } catch(e) {}
-  function withTok(url) { return TOKEN ? url + (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(TOKEN) : url; }
+
+  // Inside the app (embed) the data is cut to the signed-in person's
+  // districts: their own and any additional ones, or the whole state for
+  // State. The server does the cutting from the token (viewScope_ in Code.gs);
+  // this page only asks. On its own the portal still shows everything.
+  var VIEW_SESSION = null;
+  if (document.documentElement.classList.contains('embed')) {
+    try { VIEW_SESSION = JSON.parse(localStorage.getItem('eg_grm_session') || sessionStorage.getItem('eg_grm_session') || 'null'); } catch(e) {}
+  }
+  var SCOPED = !!(VIEW_SESSION && VIEW_SESSION.token && VIEW_SESSION.role !== 'State');
+  function withTok(url) {
+    var t = SCOPED ? VIEW_SESSION.token : TOKEN;
+    if (t) url += (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(t);
+    return SCOPED ? url + '&scoped=1' : url;
+  }
   function checkAuth(res) { return true; }
 
   document.getElementById('top-date').textContent =
@@ -901,7 +924,7 @@
 
     // ─ KPI Row 1 ─
     var kpis = [
-      { n: t.total||0,     l:'Total Planned',  c:'#1D4ED8', chip:'All Districts',    chipC:'#1E40AF', chipBg:'#DBEAFE' },
+      { n: t.total||0,     l:'Total Planned',  c:'#1D4ED8', chip:(SCOPED ? 'My Districts' : 'All Districts'), chipC:'#1E40AF', chipBg:'#DBEAFE' },
       { n: t.conducted||0, l:'Conducted',       c:'#065F46', chip:'Completed',        chipC:'#065F46', chipBg:'#A7F3D0' },
       { n: pending,        l:'Pending',         c:'#92400E', chip:'Planned + Delayed', chipC:'#92400E', chipBg:'#FDE68A' },
       { n: t.cancelled||0, l:'Cancelled',       c:'#991B1B', chip:'Need Follow-up',   chipC:'#991B1B', chipBg:'#FECACA' }
@@ -2276,6 +2299,16 @@
     if (b) b.textContent = signedIn ? 'Home' : 'Sign in';
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paintHomeLinks); else paintHomeLinks();
+
+  // Inside the app: say whose districts these are.
+  (function() {
+    var el = document.getElementById('scope-note');
+    if (!el || !SCOPED) return;
+    var ds = (VIEW_SESSION.districts && VIEW_SESSION.districts.length) ? VIEW_SESSION.districts : [VIEW_SESSION.district];
+    el.textContent = '📍 ' + ds.filter(Boolean).join(', ');
+    el.title = 'Showing your districts only';
+    el.style.display = 'inline-block';
+  })();
 
   showView(PORTAL_VIEW);
 </script>
