@@ -16,8 +16,8 @@ function varVal(name) {
   return m[1];
 }
 
-const FNS = ['_emailEsc', 'sendOTP', 'sendColleagueNotification', 'sendMOMNotification',
-             'buildEscalationEmail_', 'buildWeeklyReminder_'];
+const FNS = ['_emailEsc', 'sendOTP', 'colleagueNames_', 'sendColleagueNotification', 'sendColleagueNotificationTo_',
+             'sendMOMNotification', 'sendMOMNotificationTo_', 'buildEscalationEmail_', 'buildWeeklyReminder_'];
 
 function load(state, host) {
   const mail = [];

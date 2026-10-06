@@ -550,7 +550,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.7 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.8 &middot; 6 Oct 2026</div>
   </div>
 </div>
 
@@ -697,12 +697,12 @@
         </div>
         <div class="form-divider"></div>
         <div class="form-section-label" style="display:flex;align-items:center;gap:10px;">
-          <span>👥 Accompanying Colleague</span>
+          <span>👥 Accompanying Colleagues</span>
           <button class="btn-plus" id="btn-colleague-picker" onclick="toggleColleaguePicker()">+</button>
         </div>
         <div id="colleague-picker" class="colleague-picker" style="display:none;">
           <div class="picker-header">
-            <span>Select from your district team members:</span>
+            <span>Tap a name to add or remove. You can pick more than one:</span>
             <button onclick="toggleColleaguePicker()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#6B7280;">✕</button>
           </div>
           <div style="padding:8px 10px;border-bottom:1px solid #E5E7EB;background:#F9FAFB;">
@@ -713,12 +713,12 @@
         </div>
         <div class="form-row">
           <div class="field">
-            <label>Colleague Name</label>
-            <input type="text" id="colleagueName" placeholder="Name of accompanying colleague (if any)">
+            <label>Colleague Names</label>
+            <input type="text" id="colleagueName" placeholder="Pick from the list, or type names separated by commas">
           </div>
           <div class="field">
-            <label>Colleague Designation</label>
-            <input type="text" id="colleaguePost" placeholder="Colleague's designation">
+            <label>Designations</label>
+            <input type="text" id="colleaguePost" placeholder="Filled in from the list">
           </div>
         </div>
         <div class="form-divider"></div>
@@ -3263,8 +3263,10 @@
       } else if (c.district) {
         loc = c.district;
       }
+      var picked = isColleaguePicked(c.name);
       var div = document.createElement('div');
       div.className = 'colleague-item';
+      if (picked) div.style.background = '#F0FDF4';
       div.innerHTML =
         '<div style="min-width:22px;font-size:11px;color:#9CA3AF;font-weight:700;text-align:right;padding-right:4px;flex-shrink:0;">' + (i + 1) + '</div>' +
         '<div class="ci-avatar">' + ini + '</div>' +
@@ -3272,7 +3274,8 @@
           '<div class="ci-name">' + esc(c.name) + '</div>' +
           '<div class="ci-post">' + esc(c.designation) + '</div>' +
           (loc ? '<div style="font-size:10px;color:#9CA3AF;margin-top:2px;">📍 ' + esc(loc) + '</div>' : '') +
-        '</div>';
+        '</div>' +
+        (picked ? '<div style="color:#16A34A;font-weight:800;font-size:18px;flex-shrink:0;">✓</div>' : '');
       div.addEventListener('click', function() { selectColleague(c.name, c.designation); });
       el.appendChild(div);
     });
@@ -3290,10 +3293,30 @@
     renderColleagueItems(filtered);
   }
 
+  // Several colleagues can go to one meeting (6 Oct 2026). The two boxes hold
+  // comma separated lists, names and designations in the same order. A tap on
+  // a name in the list adds it, a second tap takes it out, and the list stays
+  // open so more can be picked. Names can still be typed by hand; a name typed
+  // without a designation keeps its place with "-".
+  function colList_(id) {
+    return ((document.getElementById(id) || {}).value || '').split(',').map(function(x) { return x.trim(); });
+  }
+  function isColleaguePicked(name) {
+    var key = (name || '').trim().toLowerCase();
+    return colList_('colleagueName').some(function(x) { return x && x.toLowerCase() === key; });
+  }
   function selectColleague(name, post) {
-    document.getElementById('colleagueName').value = name;
-    document.getElementById('colleaguePost').value = post;
-    document.getElementById('colleague-picker').style.display = 'none';
+    var names = colList_('colleagueName'), posts = colList_('colleaguePost'), pairs = [];
+    names.forEach(function(n, i) { if (n) pairs.push({ n: n, p: posts[i] || '-' }); });
+    var key = (name || '').trim().toLowerCase(), at = -1;
+    pairs.forEach(function(x, i) { if (x.n.toLowerCase() === key) at = i; });
+    if (at >= 0) pairs.splice(at, 1);
+    else pairs.push({ n: (name || '').trim(), p: (post || '').trim() || '-' });
+    document.getElementById('colleagueName').value = pairs.map(function(x) { return x.n; }).join(', ');
+    var postText = pairs.map(function(x) { return x.p; }).join(', ');
+    document.getElementById('colleaguePost').value = (postText === '-') ? '' : postText;
+    try { savePlanDraft(); } catch (e) {}
+    filterColleagues((document.getElementById('colleague-search') || {}).value || '');   // redraw the ticks
   }
 
   // ── Submit Meeting ───────────────────────────────────────────
@@ -4632,6 +4655,12 @@
     'Name of accompanying colleague (if any)': 'साथ जाने वाले सहकर्मी का नाम (यदि कोई हो)',
     'Colleague Designation': 'सहकर्मी का पदनाम',
     "Colleague's designation": 'सहकर्मी का पदनाम',
+    'Accompanying Colleagues': 'साथ जाने वाले सहकर्मी',
+    'Tap a name to add or remove. You can pick more than one:': 'जोड़ने या हटाने के लिए नाम पर टैप करें। एक से अधिक चुन सकते हैं:',
+    'Colleague Names': 'सहकर्मियों के नाम',
+    'Pick from the list, or type names separated by commas': 'सूची से चुनें, या नाम अल्पविराम (,) से अलग करके लिखें',
+    'Designations': 'पदनाम',
+    'Filled in from the list': 'सूची से अपने आप भरेगा',
     'Reset': 'रीसेट करें',
     'Save Meeting Plan': 'बैठक योजना सहेजें',
     'Saving...': 'सहेजा जा रहा है...',

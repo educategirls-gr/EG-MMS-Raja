@@ -2517,9 +2517,13 @@ function createMoMDoc(d, photoFolderUrl) {
   // Attendees
   sec('Attended By (EG Team)');
   body.appendParagraph((d.employeeName || '-') + '   (' + (d.designation || '-') + ')');
-  if (d.colleagueName) {
-    body.appendParagraph((d.colleagueName || '') + '   (' + (d.colleaguePost || '') + ')');
-  }
+  // One line per colleague, each with their designation when the lists line up.
+  var cNames = colleagueNames_(d.colleagueName);
+  var cPosts = (d.colleaguePost || '').toString().split(',').map(function(x) { return x.trim(); });
+  cNames.forEach(function(n, i) {
+    var p = cNames.length === 1 ? (d.colleaguePost || '').toString().trim() : (cPosts[i] || '');
+    body.appendParagraph(n + (p && p !== '-' ? '   (' + p + ')' : ''));
+  });
 
   // Agenda
   sec('Agenda');
@@ -3383,11 +3387,25 @@ function getZoneAllMeetings(zone) {
 // ------------------------------------------------------------
 //  COLLEAGUE MEETING NOTIFICATION EMAIL
 // ------------------------------------------------------------
+// Several colleagues can go to one meeting (6 Oct 2026). Their names sit comma
+// separated in the one Colleague Name column, designations likewise, and each
+// colleague found in Employee_DB gets an email of their own.
+function colleagueNames_(s) {
+  var seen = {}, out = [];
+  (s || '').toString().split(',').forEach(function(x) {
+    var n = x.trim();
+    if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; out.push(n); }
+  });
+  return out;
+}
 function sendColleagueNotification(data, mtgId) {
-  if (!data || !data.colleagueName || !data.colleagueName.trim()) return;
-
+  colleagueNames_(data && data.colleagueName).forEach(function(name) {
+    try { sendColleagueNotificationTo_(data, mtgId, name); } catch (e) { /* one bad address must not stop the rest */ }
+  });
+}
+function sendColleagueNotificationTo_(data, mtgId, name) {
   // Find colleague email by name in Employee_DB
-  var colleague = getEmployeeByName(data.colleagueName.trim());
+  var colleague = getEmployeeByName(name);
   if (!colleague || !colleague.email) return; // not found, skip
 
   var subject = 'Meeting Invitation | ' + mtgId + ' | ' + data.adhikariPost + ', ' + (data.district || '');
@@ -3405,7 +3423,7 @@ function sendColleagueNotification(data, mtgId) {
 
     // Greeting
     '<div style="padding:28px 28px 0;background:#fff;">' +
-      '<p style="font-size:14px;color:#111827;margin:0 0 6px;">Dear <strong>' + data.colleagueName + '</strong>,</p>' +
+      '<p style="font-size:14px;color:#111827;margin:0 0 6px;">Dear <strong>' + _emailEsc(name) + '</strong>,</p>' +
       '<p style="font-size:13.5px;color:#374151;line-height:1.7;margin:0 0 22px;">' +
         'You have been designated as the <strong>Accompanying Colleague</strong> for an upcoming stakeholder meeting ' +
         'organized by <strong>' + data.employeeName + '</strong>. Kindly make a note of the following details and ensure ' +
@@ -3488,9 +3506,12 @@ function sendColleagueNotification(data, mtgId) {
 //  COLLEAGUE MOM EMAIL - sent after meeting is conducted
 // ------------------------------------------------------------
 function sendMOMNotification(data, momUrl, photoFolderUrl, followUpId) {
-  if (!data || !data.colleagueName || !data.colleagueName.trim()) return;
-
-  var colleague = getEmployeeByName(data.colleagueName.trim());
+  colleagueNames_(data && data.colleagueName).forEach(function(name) {
+    try { sendMOMNotificationTo_(data, momUrl, photoFolderUrl, followUpId, name); } catch (e) { /* one bad address must not stop the rest */ }
+  });
+}
+function sendMOMNotificationTo_(data, momUrl, photoFolderUrl, followUpId, name) {
+  var colleague = getEmployeeByName(name);
   if (!colleague || !colleague.email) return;
 
   var subject = 'Minutes of Meeting | ' + data.meetingId + ' | ' + data.adhikariPost + ', ' + (data.district || '');
@@ -3515,7 +3536,7 @@ function sendMOMNotification(data, momUrl, photoFolderUrl, followUpId) {
 
     // Greeting
     '<div style="padding:28px 28px 0;background:#fff;">' +
-      '<p style="font-size:14px;color:#111827;margin:0 0 6px;">Dear <strong>' + data.colleagueName + '</strong>,</p>' +
+      '<p style="font-size:14px;color:#111827;margin:0 0 6px;">Dear <strong>' + _emailEsc(name) + '</strong>,</p>' +
       '<p style="font-size:13.5px;color:#374151;line-height:1.7;margin:0 0 22px;">' +
         'Please find below the Minutes of Meeting (MoM) for the stakeholder meeting you attended alongside ' +
         '<strong>' + data.employeeName + '</strong>. Kindly review the key discussion points and take note of any follow-up actions.' +
