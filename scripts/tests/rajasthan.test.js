@@ -38,16 +38,22 @@ function eq(name, got, want) {
 }
 
 // ── Districts: no zones, 13 staffed districts in one list, JAIPUR for everyone ──
+// State users plan in any of the 41 official districts (12 Oct 2026); the
+// official spelling (BALOTRA, JALORE) is final, older rows still match.
 const c = load();
-const ALL = ['BALOTARA','BANSWARA','BARAN','JAIPUR','JAISALMER','JALOR','JHALAWAR','JODHPUR','NAGAUR','PALI','RAJSAMAND','SALUMBAR','SIROHI','UDAIPUR'];
-eq('State plan dropdown: 13 districts + JAIPUR', c.getPlanDistricts('State', '', []), ALL);
+const ALL = ['BALOTRA','BANSWARA','BARAN','JAIPUR','JAISALMER','JALORE','JHALAWAR','JODHPUR','NAGAUR','PALI','RAJSAMAND','SALUMBAR','SIROHI','UDAIPUR'];
+const stateList = c.getPlanDistricts('State', '', []);
+eq('State plan dropdown: all 41 official districts', stateList.length, 41);
+eq('State plan dropdown: official spellings, no old ones',
+   ['BALOTRA','JALORE','GANGANAGAR','JAIPUR','SAWAI MADHOPUR'].every(d => stateList.includes(d)) && !stateList.includes('BALOTARA') && !stateList.includes('JALOR'), true);
+eq('State plan dropdown: the 13 staffed districts and JAIPUR are all in it', ALL.every(d => stateList.includes(d)), true);
 eq('Field (BARAN): own + JAIPUR', c.getPlanDistricts('Field', '', ['BARAN']), ['BARAN', 'JAIPUR']);
 eq('Field with two districts (Narayan, PALI + SIROHI)', c.getPlanDistricts('Field', '', ['PALI', 'SIROHI']), ['JAIPUR', 'PALI', 'SIROHI']);
-eq('District lead with five (Sakshi)', c.getPlanDistricts('District', '', ['JALOR','RAJSAMAND','JODHPUR','PALI','SIROHI']),
-   ['JAIPUR','JALOR','JODHPUR','PALI','RAJSAMAND','SIROHI']);
+eq('District lead with five (Sakshi), JALOR from the sheet shown as JALORE', c.getPlanDistricts('District', '', ['JALOR','RAJSAMAND','JODHPUR','PALI','SIROHI']),
+   ['JAIPUR','JALORE','JODHPUR','PALI','RAJSAMAND','SIROHI']);
 eq('BARAN is in the one group', c.districtToZone_('baran'), 'RAJASTHAN');
 eq('JAIPUR is in no group (State in reports)', c.districtToZone_('JAIPUR'), '');
-eq('allDistrictNames_ gives all 14', c.allDistrictNames_().slice().sort(), ALL);
+eq('allDistrictNames_ covers all 41 official districts', new Set(c.allDistrictNames_().map(d => c.normDist_(d))).size, 41);
 const seema = { role: 'Field', district: 'BARAN', districts: ['BARAN'] };
 eq('Field asking for a district not hers falls back to her own', c.resolveActiveDistrict_(seema, 'UDAIPUR'), 'BARAN');
 eq('Field may file under JAIPUR', c.resolveActiveDistrict_(seema, 'JAIPUR'), 'JAIPUR');
@@ -97,8 +103,13 @@ const mirror = {
   'kohla.ram@educategirls.ngo':       { district: 'BALOTARA', block: 'BALOTRA' },
 };
 const b = load({ props: { EMP_MIRROR_N: '1', EMP_MIRROR_0: JSON.stringify(mirror), POSTS_MIRROR: '["Other"]', PURPOSES_MIRROR: '["Enrollment"]' } });
-eq('blocks split per officer and sorted', b.getDropdownData('').blocksByDistrict,
-   { BARAN: ['ATRU', 'BARAN', 'KISHANGANJ', 'MANGROL', 'SHAHBAD'], BALOTARA: ['BALOTRA'] });
+// Blocks come from the official record now (12 Oct 2026), every block of every
+// district, not only those EG staff are posted in.
+const bb = b.getDropdownData('').blocksByDistrict;
+eq('BARAN: its 8 official blocks', bb.BARAN, ['ANTA','ATRU','BARAN','CHHABRA','CHHIPABAROD','KISHANGANJ','MANGROL','SHAHBAD']);
+eq('a district with no EG staff has its blocks too (TONK)', bb.TONK.length, 10);
+eq('the old spelling BALOTARA finds the BALOTRA blocks', bb.BALOTARA, bb.BALOTRA);
+eq('41 districts and 425 blocks in all', [Object.keys(c.RJ_DISTRICT_BLOCKS).length, Object.values(c.RJ_DISTRICT_BLOCKS).reduce((n, l) => n + l.length, 0)], [41, 425]);
 
 console.log('\n' + (fails ? fails + ' FAILED' : 'all checks pass'));
 process.exit(fails ? 1 : 0);

@@ -570,7 +570,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.14 &middot; 6 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.15 &middot; 12 Oct 2026</div>
   </div>
 </div>
 
@@ -1145,9 +1145,20 @@
   // the dropdown is briefly out of date, never wrong once the answer lands.
   // Rajasthan has no zones: one group holds every district with EG staff.
   var ZONE_DISTRICTS = {
-    'RAJASTHAN': ['BALOTARA','BANSWARA','BARAN','JAISALMER','JALOR','JHALAWAR','JODHPUR',
+    'RAJASTHAN': ['BALOTRA','BANSWARA','BARAN','JAISALMER','JALORE','JHALAWAR','JODHPUR',
                   'NAGAUR','PALI','RAJSAMAND','SALUMBAR','SIROHI','UDAIPUR']
   };
+  // Every district of Rajasthan, for State users planning (official record,
+  // 12 Oct 2026). Same list as RJ_DISTRICT_BLOCKS in Code.gs, whose answer wins.
+  var RJ_DISTRICTS = [
+    'AJMER','ALWAR','BALOTRA','BANSWARA','BARAN','BARMER','BEAWAR','BHARATPUR','BHILWARA','BIKANER',
+    'BUNDI','CHITTORGARH','CHURU','DAUSA','DEEG','DHOLPUR','DIDWANA-KUCHAMAN','DUNGARPUR','GANGANAGAR',
+    'HANUMANGARH','JAIPUR','JAISALMER','JALORE','JHALAWAR','JHUNJHUNU','JODHPUR','KARAULI',
+    'KHAIRTHAL-TIJARA','KOTA','KOTPUTLI-BEHROR','NAGAUR','PALI','PHALODI','PRATAPGARH','RAJSAMAND',
+    'SALUMBAR','SAWAI MADHOPUR','SIKAR','SIROHI','TONK','UDAIPUR'
+  ];
+  // Older spellings still in a saved sign-in, shown under the official name.
+  var DISTRICT_ALIASES = { 'BALOTARA': 'BALOTRA', 'JALOR': 'JALORE' };
   // Selectable by everyone when planning, but not part of any zone
   var STATE_EXTRA_DISTRICTS = ['JAIPUR'];
 
@@ -1160,7 +1171,7 @@
         if (z.toUpperCase().replace(/\s+/g, '') === zn) { base = ZONE_DISTRICTS[z].slice(); break; }
       }
     } else if (role === 'State') {
-      for (var z2 in ZONE_DISTRICTS) base = base.concat(ZONE_DISTRICTS[z2]);
+      base = RJ_DISTRICTS.slice();
     } else {
       base = MY_DISTRICTS.slice();   // District / Field → their own district(s)
     }
@@ -1168,6 +1179,7 @@
     var seen = {}, out = [];
     base.forEach(function(d) {
       var k = (d || '').toString().trim();
+      k = DISTRICT_ALIASES[k.toUpperCase()] || k;
       if (k && !seen[k.toUpperCase()]) { seen[k.toUpperCase()] = 1; out.push(k); }
     });
     return out.sort();

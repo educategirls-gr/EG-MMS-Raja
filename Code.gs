@@ -252,7 +252,7 @@ function invalidateUser(email, district) {
       var k = x.toLowerCase();
       if (!k || seen[k]) return;
       seen[k] = 1;
-      keys.push('distMtg_' + k);            // matches getDistrictAllMeetings
+      keys.push('distMtg_' + normDist_(x).toLowerCase());   // matches getDistrictAllMeetings
       keys.push('stats_' + email + '_0_' + k, 'stats_' + email + '_1_' + k);
       var z = districtToZone_(x);
       if (z) keys.push('zoneMtg_' + z);     // matches getZoneAllMeetings
@@ -271,7 +271,7 @@ function invalidateUser(email, district) {
 function CACHE_clearAll() {
   var keys = ['reportData', 'empMaster', 'allEmp', 'stateMtg_all', 'docUrlMap', 'meetingZoneMap', 'stats__0_', 'stats__1_'];
   var dists = allDistrictNames_().map(function(d) { return d.toLowerCase(); });
-  dists.forEach(function(d) { keys.push('distMtg_' + d, 'distEmp_' + d); });
+  dists.forEach(function(d) { var n = normDist_(d).toLowerCase(); keys.push('distMtg_' + n, 'distEmp_' + n); });
   for (var z in ZONE_DISTRICTS) keys.push('zoneMtg_' + z);
   var people = Object.keys(empMirrorRead_() || {});
   people.forEach(function(e) {
@@ -446,7 +446,7 @@ function normalizeAllDistricts() {
   try { CacheService.getScriptCache().remove('stateMtg_all'); } catch(e){}
   try { CacheService.getScriptCache().remove('allEmp'); } catch(e){}
   try {
-    allDistrictNames_().forEach(function(d){ CacheService.getScriptCache().remove('distMtg_' + d.toLowerCase()); });
+    allDistrictNames_().forEach(function(d){ CacheService.getScriptCache().remove('distMtg_' + normDist_(d).toLowerCase()); });
   } catch(e){}
 
   Logger.log(JSON.stringify(report, null, 2));
@@ -1436,7 +1436,7 @@ function resolveActiveDistrict_(session, requested) {
                   : [session && session.district];
   if (req) {
     for (var i = 0; i < allowed.length; i++) {
-      if ((allowed[i] || '').toString().trim().toLowerCase() === req.toLowerCase()) {
+      if (normDist_(allowed[i]) === normDist_(req)) {
         return allowed[i];   // authorized → honour the request
       }
     }
@@ -1456,8 +1456,8 @@ function getPlanDistricts(role, zone, ownDistricts) {
     var zkey = findZoneKey_(zone);
     base = zkey ? ZONE_DISTRICTS[zkey].slice() : [];
   } else if (role === 'State') {
-    // All admin districts across every zone
-    base = [];
+    // Every district of Rajasthan (12 Oct 2026), not only those with staff
+    base = Object.keys(RJ_DISTRICT_BLOCKS);
     for (var z in ZONE_DISTRICTS) base = base.concat(ZONE_DISTRICTS[z]);
   } else {
     // District / Field → their own (primary + any charge) district(s)
@@ -1465,10 +1465,10 @@ function getPlanDistricts(role, zone, ownDistricts) {
   }
   // Everyone also gets the state-level-only districts (e.g. LUCKNOW)
   base = base.concat(STATE_EXTRA_DISTRICTS);
-  // De-dup (case-insensitive) + sort
+  // De-dup (case-insensitive) + sort, each under its official name
   var seen = {}, out = [];
   base.forEach(function(d){
-    var k = (d || '').toString().trim();
+    var k = officialDistrict_(d);
     if (k && !seen[k.toUpperCase()]) { seen[k.toUpperCase()] = 1; out.push(k); }
   });
   return out.sort();
@@ -1673,26 +1673,16 @@ function getDropdownData(email) {
   // reopening the employee sheet.
   // The copy already carries each person's district and block, and an empty
   // block list only means the optional block dropdown has nothing to offer.
+  // Every block of every district, from the official record (12 Oct 2026).
+  // It used to be only the blocks EG staff were posted in, so an official in
+  // any other block could not be recorded. A page still holding an older
+  // spelling of a district (BALOTARA, JALOR) finds the blocks under it too.
   var blocksByDistrict = {};
-  try {
-    var _mir = empMirrorRead_() || {};
-    var _emps = [];
-    for (var _k in _mir) _emps.push(_mir[_k]);
-    // An officer covering several blocks has them comma separated in one cell
-    // ("ATRU, BARAN"), each its own option. They are filed under the person's
-    // main district, so a block in an additional district lands there too.
-    _emps.forEach(function(e) {
-      var d = (e.district || '').toString().trim();
-      if (!d) return;
-      (e.block || '').toString().split(',').forEach(function(x) {
-        var b = x.trim();
-        if (!b) return;
-        var list = blocksByDistrict[d] || (blocksByDistrict[d] = []);
-        if (list.indexOf(b) === -1) list.push(b);
-      });
-    });
-    Object.keys(blocksByDistrict).forEach(function(d){ blocksByDistrict[d].sort(); });
-  } catch (be) { blocksByDistrict = {}; }
+  Object.keys(RJ_DISTRICT_BLOCKS).forEach(function(d) { blocksByDistrict[d] = RJ_DISTRICT_BLOCKS[d].slice(); });
+  Object.keys(DISTRICT_ALIASES).forEach(function(old) {
+    var off = officialDistrict_(old);
+    if (RJ_DISTRICT_BLOCKS[off]) blocksByDistrict[old] = RJ_DISTRICT_BLOCKS[off].slice();
+  });
 
   // When this office, and this person, were last met and about what. It rides
   // along with the form rather than being fetched when a post is picked: the
@@ -1912,7 +1902,7 @@ function saveMeeting(data) {
 
     var row = [
       mtgId,                    // A  Meeting ID
-      data.district     || '',  // B  District
+      officialDistrict_(data.district),  // B  District
       data.employeeName || '',  // C  Employee Name
       data.designation  || '',  // D  Post
       data.email        || '',  // E  Email
@@ -2054,7 +2044,7 @@ function getMyMeetings(email) {
 //  DISTRICT EMPLOYEES - for colleague picker
 // ------------------------------------------------------------
 function getDistrictEmployees(district, currentEmail) {
-  var distKey = 'distEmp_' + district.trim().toLowerCase();
+  var distKey = 'distEmp_' + normDist_(district).toLowerCase();
   var cur     = currentEmail.trim().toLowerCase();
   var cached  = cGet(distKey);
   if (cached) return cached.filter(function(r){ return r._email !== cur; });
@@ -2065,11 +2055,10 @@ function getDistrictEmployees(district, currentEmail) {
 
   var data = sheet.getDataRange().getValues();
   var all  = [];
-  var distL = district.trim().toLowerCase();
+  var distN = normDist_(district);
   for (var i = 1; i < data.length; i++) {
-    var d = data[i][0] ? data[i][0].toString().trim().toLowerCase() : '';
     var e = data[i][4] ? data[i][4].toString().trim().toLowerCase() : '';
-    if (d === distL) {
+    if (data[i][0] && normDist_(data[i][0]) === distN) {
       all.push({
         name:        (data[i][2] || '').toString().trim(),
         designation: (data[i][3] || '').toString().trim(),
@@ -2300,6 +2289,7 @@ function conductMeeting(payload) {
 
 function conductMeetingNow_(payload) {
   try {
+    payload.district = officialDistrict_(payload.district);   // the official name on new rows
     if (sheetBreakerTripped_()) return { success: false, message: SHEET_BUSY_MSG };
     var ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
     var tz  = Session.getScriptTimeZone();
@@ -3110,8 +3100,10 @@ function getDocUrlMap_() {
 // ------------------------------------------------------------
 function getDistrictAllMeetings(district) {
   try {
-    var distL    = district.trim().toLowerCase();
-    var cacheKey = 'distMtg_' + distL;
+    // Compared through normDist_, so a district's old and official spelling
+    // (BALOTARA, BALOTRA) are one district, with one cache key.
+    var distN    = normDist_(district);
+    var cacheKey = 'distMtg_' + distN.toLowerCase();
     var hit      = cGet(cacheKey);
     if (hit) return hit;
 
@@ -3123,7 +3115,7 @@ function getDistrictAllMeetings(district) {
     if (planSheet) {
       var pd = (sheetRows_(MEETINGS_SHEET) || []);
       for (var i = 1; i < pd.length; i++) {
-        if ((pd[i][1] || '').toString().trim().toLowerCase() !== distL) continue;
+        if (normDist_(pd[i][1]) !== distN) continue;
         var st = (pd[i][13] || 'Planned').toString();
         if (st !== 'Planned' && st !== 'Follow-up') continue;
         meetings.push({
@@ -3147,7 +3139,7 @@ function getDistrictAllMeetings(district) {
     if (condSheet) {
       var cd = (sheetRows_(CONDUCTED_SHEET) || []);
       for (var i = 1; i < cd.length; i++) {
-        if ((cd[i][1] || '').toString().trim().toLowerCase() !== distL) continue;
+        if (normDist_(cd[i][1]) !== distN) continue;
         meetings.push({
           meetingId:    (cd[i][0]  || '').toString(),
           employeeName: (cd[i][2]  || '').toString(),
@@ -3173,7 +3165,7 @@ function getDistrictAllMeetings(district) {
     if (postSheet) {
       var xd = (sheetRows_(POSTPONED_SHEET) || []), seenP = {};   // a reschedule sent twice shows once
       for (var i = 1; i < xd.length; i++) {
-        if ((xd[i][1] || '').toString().trim().toLowerCase() !== distL) continue;
+        if (normDist_(xd[i][1]) !== distN) continue;
         var pKey = (xd[i][0] || '') + '|' + dayKey_(xd[i][7]) + '|' + dayKey_(xd[i][8]);
         if (seenP[pKey]) continue; seenP[pKey] = 1;
         meetings.push({
@@ -3198,7 +3190,7 @@ function getDistrictAllMeetings(district) {
     if (cancelSheet) {
       var xc = (sheetRows_(CANCELLED_SHEET) || []), seenX = {};   // one meeting, one row
       for (var i = 1; i < xc.length; i++) {
-        if ((xc[i][1] || '').toString().trim().toLowerCase() !== distL) continue;
+        if (normDist_(xc[i][1]) !== distN) continue;
         var xId = (xc[i][0] || '').toString().trim();
         if (seenX[xId]) continue; seenX[xId] = 1;
         meetings.push({
@@ -3369,7 +3361,7 @@ function getStateAllMeetings() {
 // staff. Nobody has the Zone role, so it is a list and never anyone's scope.
 // Same spellings as Employee_DB. Change docs/dashboard.html too.
 var ZONE_DISTRICTS = {
-  'RAJASTHAN': ['BALOTARA','BANSWARA','BARAN','JAISALMER','JALOR','JHALAWAR','JODHPUR',
+  'RAJASTHAN': ['BALOTRA','BANSWARA','BARAN','JAISALMER','JALORE','JHALAWAR','JODHPUR',
                 'NAGAUR','PALI','RAJSAMAND','SALUMBAR','SIROHI','UDAIPUR']
 };
 // State-level place with no district team (the state office), selectable by
@@ -3379,10 +3371,94 @@ var STATE_EXTRA_DISTRICTS = ['JAIPUR'];
 // here. normDist_ is only ever a comparison and cache key, never shown or
 // written, so an alias changes which names match and nothing else. Add a
 // pair only when two spellings of one district actually turn up.
-var DISTRICT_ALIASES = {};
+// The official record (12 Oct 2026) writes Balotra and Jalore; the sheet had
+// BALOTARA and JALOR, so rows written before still match.
+var DISTRICT_ALIASES = { 'BALOTARA': 'BALOTRA', 'JALOR': 'JALORE' };
+
+// All 41 districts of Rajasthan and their 425 blocks, from the official record
+// Alok gave on 12 Oct 2026 (Rajasthan_District_Block_List_Short.xlsx). These
+// names are final: new meetings are saved under them, State users can plan a
+// meeting in any of them, and the Stakeholder Block list is the chosen
+// district's blocks from here. Written in capitals like every district here.
+var RJ_DISTRICT_BLOCKS = {
+  'AJMER': ['AJMER','ARAIN','BHINAY','KEKRI','KISHANGARH','NASIRABAD','PEESANGAN','PUSHKAR','ROOPANGARH',
+            'SARWAR','SAWAR','TANTOTI'],
+  'ALWAR': ['ALWAR','GOVINDGARH','KATHUMAR','LACHHMANGARH','MALAKHERA','NAUGANWA','PRATAPGARH','RAJGARH',
+            'RAMGARH','RENI','TEHLA','THANAGAZI'],
+  'BALOTRA': ['DHORIMANNA','GIDA','GUDHA MALANI','KALYANPUR','PACHPADRA','PATODI','SAMDARI','SINDHARI','SIWANA'],
+  'BANSWARA': ['ABAPURA','ANANDPURI','ARTHUNA','BAGIDORA','BANSWARA','CHHOTI SARWAN','GANGADTALAI','GANORA',
+               'GARHI','GHATOL','KUSHALGARH','SAJJANGARH'],
+  'BARAN': ['ANTA','ATRU','BARAN','CHHABRA','CHHIPABAROD','KISHANGANJ','MANGROL','SHAHBAD'],
+  'BARMER': ['BARMER','BARMER GRAMIN','BATADOO','BAYTOO','CHOHTAN','DHANAU','GADRAROAD','NOKHRA','RAMSAR',
+             'SEDWA','SHEO'],
+  'BEAWAR': ['BADNOR','BEAWAR','JAITARAN','MASUDA','RAIPUR','TATGARH','VIJAINAGAR'],
+  'BHARATPUR': ['BAYANA','BHARATPUR','BHUSAWAR','NADBAI','RUDAWAL','RUPBAS','UCHCHAIN','WEIR'],
+  'BHILWARA': ['ANTALI','ASIND','BANERA','BHILWARA','BIJOLIYA','HAMEERGARH','HURDA','JAHAZPUR','KACHHOLA',
+               'KARERA','KOTRI','MANDAL','MANDALGARH','PHOOLIYA KALAN','RAIPUR','SAHARA','SHAHPURA'],
+  'BIKANER': ['BAJJU','BIKANER','CHHATARGARH','HADAN','JASRASAR','KHAJUWALA','KOLAYAT','LUNKARANSAR','NOKHA',
+              'POOGAL','SRIDUNGARGARH'],
+  'BUNDI': ['BUNDI','HINDOLI','INDRAGARH','KESHORAIPATAN','NAINWA','RAITHAL','TALERA'],
+  'CHITTORGARH': ['BARI SADRI','BASSI','BEGUN','BHADESAR','BHUPALSAGAR','CHITTORGARH','DUNGLA','GANGRAR',
+                  'KAPASAN','NIMBAHERA','RASHMI','RAWATBHATA'],
+  'CHURU': ['BHANIPURA','BIDASAR','CHURU','RAJALDESAR','RAJGARH','RATANGARH','SARDARSHAHAR','SIDHMUKH',
+            'SUJANGARH','TARANAGAR'],
+  'DAUSA': ['BAHRAWANDA','BAIJUPARA','BANDIKUI','BASWA','BHANDAREJ','DAUSA','KUNDAL','LALSOT','LAWAN','MAHWA',
+            'MANDAWAR','NANGAL RAJAWATAN','NIRJHARNA','PAPARDA','RAHUWAS','RAMGARH PACHWARA','SAINTHAL','SIKRAI'],
+  'DEEG': ['DEEG','JANOOTHAR','JURHARA','KAMAN','KUMHER','NAGAR','PAHARI','RARAH','SIKRI'],
+  'DHOLPUR': ['BARI','BASAI NAWAB','BASERI','DHOLPUR','MANIYA','RAJAKHERA','SARMATHURA','SEPAU'],
+  'DIDWANA-KUCHAMAN': ['CHHOTI KHATOO','DIDWANA','KUCHAMAN CITY','LADNU','MAKRANA','MAULASAR','NAWA','PARBATSAR'],
+  'DUNGARPUR': ['ASPUR','BICHHIWARA','CHIKHALI','DOVDA','DUNGARPUR','GALIYAKOT','GAMRI AHARA','JHONTHRIPAL',
+                'OBRI','PALDEWAL','SABLA','SAGWARA','SIMALWARA'],
+  'GANGANAGAR': ['ANUPGARH','GAJSINGHPUR','GANGANAGAR','GHARSANA','KARANPUR','PADAMPUR','RAISINGHNAGAR','RAWLA',
+                 'SADULSHAHAR','SURATGARH','VIJAINAGAR'],
+  'HANUMANGARH': ['BHADRA','HANUMANGARH','NOHAR','PALLU','PILIBANGA','RAWATSAR','SANGARIA','TIBBI'],
+  'JAIPUR': ['AMBER','ANDHI','BASSI','CHAKSU','CHOMU','DUDU','JAIPUR','JALSU','JAMWARAMGARH','JOBNER','KALWAR',
+             'KISHANGARH RENWAL','KOTKHAWDA','MADHORAJPURA','MAUZAMABAD','PHAGI','PHULERA (HQ.SAMBHAR)',
+             'RAMPURA DABRI','SANGANER','SHAHPURA','TOONGA'],
+  'JAISALMER': ['BHANIYANA','FATEHGARH','JAISALMER','PHALSOOND','POKARAN','RAMGARH','SAM'],
+  'JALORE': ['AHORE','BAGORA','BHADRAJUN','BHINMAL','CHITALWANA','JALORE','JASWANTPURA','RANIWARA','SANCHORE',
+             'SAYLA'],
+  'JHALAWAR': ['AKLERA','ASNAWAR','BAKANI','DAG','GANGDHAR','JHALRAPATAN','KHANPUR','MANOHAR THANA','PACHPAHAR',
+               'PIRAWA','RAIPUR','SUNEL'],
+  'JHUNJHUNU': ['BISSAU','BUHANA','CHIRAWA','GUDHAGORJI','JHUNJHUNU','KHETRI','MALSISAR','MANDAWA','NAWALGARH',
+                'PILANI','SURAJGARH','UDAIPURWATI'],
+  'JODHPUR': ['BALESAR','BAORI','BHOPALGARH','BILARA','CHAMU','JHANWAR','JODHPUR','KUDI BHAGTASNI','LUNI',
+              'OSIAN','PIPAR SHAHAR','SEKHALA','SHERGARH','TINWARI'],
+  'KARAULI': ['BALGHAT','HINDAUN','KARAULI','MANDRAYAL','MASALPUR','NADOTI','SAPOTRA','SHRIMAHAVEER JI',
+              'SUROTH','TODABHIM'],
+  'KHAIRTHAL-TIJARA': ['HARSOLI','KHAIRTHAL','KISHANGARHBAS','KOTKASIM','MUNDAWAR','TAPUKARA','TIJARA'],
+  'KOTA': ['CHECHAT','DIGOD','KANWAS','LADPURA','PIPALDA','RAMGANJ MANDI','SANGOD'],
+  'KOTPUTLI-BEHROR': ['BANSUR','BEHROR','KOTPUTLI','MANDHAN','NARAYANPUR','NEEMRANA','PAOTA','VIRATNAGAR'],
+  'NAGAUR': ['DEGANA','DEH','JAYAL','KHEENVSAR','MERTA','MUNDWA','NAGAUR','RIYAN BARI','SANJOO'],
+  'PALI': ['BALI','DESURI','MARWAR JUNCTION','PALI','RANI','ROHAT','SOJAT','SUMERPUR'],
+  'PHALODI': ['AAU','BAP','BAPINI','DECHOO','GHANTIYALI','LOHAWAT','PHALODI','SETRAWA'],
+  'PRATAPGARH': ['ARNOD','CHHOTI SADRI','DALOT','DHARIAWAD','PEEPALKHOONT','PRATAPGARH','SUHAGPURA'],
+  'RAJSAMAND': ['AMET','BHIM','DELWARA','DEOGARH','GARHBOR','KHAMNOR','KUMBHALGARH','KUNWARIYA','NATHDWARA',
+                'RAILMAGRA','RAJSAMAND','SARDARGARH'],
+  'SALUMBAR': ['JHALLARA','LASADIYA','SALUMBAR','SARADA','SEMARI'],
+  'SAWAI MADHOPUR': ['BAMANWAS','BARNALA','BONLI','CHAUTH KA BARWARA','GANGAPUR','KHANDAR','MALARNA DOONGAR',
+                     'MITRAPURA','SAWAI MADHOPUR','TALAWARA','WAZEERPUR'],
+  'SIKAR': ['DANTA RAMGARH','DHOD','FATEHPUR','KHANDELA','LACHHMANGARH','NECHHWA','NEEM KA THANA','PATAN',
+            'RAMGARH SHEKHAWATI','REENGUS','SHRIMADHOPUR','SIKAR','SIKAR GRAMIN'],
+  'SIROHI': ['ABU ROAD','DELDAR','PINDWARA','REODAR','SHEOGANJ','SIROHI'],
+  'TONK': ['ALIGARH','DEOLI','DOONI','MALPURA','NAGARFORT','NIWAI','PEEPLU','TODARAISINGH','TONK','UNIARA'],
+  'UDAIPUR': ['BADGAON','BARAPAL','BHINDER','GHASA','GIRWA','GOGUNDA','JHADOL','KANOD','KHERWARA','KOTRA',
+              'KURABAR','MAVLI','NAYAGAON','PHALASIYAN','RISHABHDEO','SAYRA','VALLABHNAGAR']
+};
+// A district written any old way, as the official name; unknown names as they are.
+var _officialDist = null;
+function officialDistrict_(d) {
+  var s = (d == null ? '' : d).toString().trim();
+  if (!s) return s;
+  if (!_officialDist) {
+    _officialDist = {};
+    Object.keys(RJ_DISTRICT_BLOCKS).forEach(function(n) { _officialDist[normDist_(n)] = n; });
+  }
+  return _officialDist[normDist_(s)] || s;
+}
 // Every district the app knows, for clearing per-district caches.
 function allDistrictNames_() {
-  var out = STATE_EXTRA_DISTRICTS.slice();
+  var out = STATE_EXTRA_DISTRICTS.slice().concat(Object.keys(RJ_DISTRICT_BLOCKS));
   for (var z in ZONE_DISTRICTS) out = out.concat(ZONE_DISTRICTS[z]);
   return out;
 }
@@ -6414,7 +6490,7 @@ function getEmployeeMaster() {
         out.employees.push({
           name:        name,
           designation: (data[i][3] || '').toString().trim(),
-          district:    (data[i][0] || '').toString().trim(),
+          district:    officialDistrict_(data[i][0]),
           block:       (data[i][1] || '').toString().trim()
         });
       }
@@ -6537,6 +6613,8 @@ function getReportData() {
       }
     });
     meetings.forEach(function(m) { m.department = deptOf[(m.meetingId || '').toString().trim()] || ''; });
+    // Every meeting under its district's official name, rows written before included.
+    meetings.forEach(function(m) { m.district = officialDistrict_(m.district); });
 
     // The developer's test meetings stay out of the portal and the reports.
     var testIds = testMeetingIds_(testEmails);
@@ -6573,7 +6651,7 @@ function getDistrictReport(district) {
     if (planSheet && planSheet.getLastRow() > 1) {
       var pd = planSheet.getDataRange().getValues();
       for (var i = 1; i < pd.length; i++) {
-        if ((pd[i][1]||'').toString().trim().toLowerCase() !== distLow) continue;
+        if (normDist_(pd[i][1]) !== normDist_(distLow)) continue;
         totals.total++;
         var st = (pd[i][13]||'Planned').toString().trim().toLowerCase();
         if      (st === 'conducted') totals.conducted++;
@@ -6591,7 +6669,7 @@ function getDistrictReport(district) {
     if (cSheet && cSheet.getLastRow() > 1) {
       var cd = cSheet.getDataRange().getValues();
       for (var ci = 1; ci < cd.length; ci++) {
-        if ((cd[ci][1]||'').toString().trim().toLowerCase() !== distLow) continue;
+        if (normDist_(cd[ci][1]) !== normDist_(distLow)) continue;
 
         var emp  = (cd[ci][2]  || '').toString().trim();
         var post = (cd[ci][3]  || '').toString().trim();
@@ -6775,7 +6853,7 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
     var isState      = !scope && (allDistricts || (userRole === 'State'));
     function keepRow(dist, rowEmail) {
       if (scope) return inViewScope_(scope, dist, rowEmail);
-      return isState || dist.toUpperCase() === userDistrict.toUpperCase();
+      return isState || normDist_(dist) === normDist_(userDistrict);
     }
 
     // ── Plan Meetings ──────────────────────────────────────────
@@ -6800,7 +6878,8 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
       if (!keepRow(dist, row[4])) continue;
       if (testE[(row[4] || '').toString().trim().toLowerCase()]) continue;
 
-      var dKey = dist.charAt(0).toUpperCase() + dist.slice(1).toLowerCase();
+      var offD = officialDistrict_(dist);   // old and official spelling count as one
+      var dKey = offD.charAt(0).toUpperCase() + offD.slice(1).toLowerCase();
       if (!distMap[dKey]) distMap[dKey] = {total:0,conducted:0,planned:0,cancelled:0,postponed:0};
       distMap[dKey].total++;
       if      (status === 'conducted') distMap[dKey].conducted++;
@@ -7257,7 +7336,7 @@ function clearMyCache(email) {
     invalidateUser(e);
     // Also clear district employee lists
     CacheService.getScriptCache().removeAll(['allEmp', 'emp_' + e].concat(
-      allDistrictNames_().map(function(d){ return 'distEmp_' + d.toLowerCase(); })));
+      allDistrictNames_().map(function(d){ return 'distEmp_' + normDist_(d).toLowerCase(); })));
     return { success: true, message: 'Cache cleared for ' + email };
   } catch(err) {
     return { success: false, message: err.message };
