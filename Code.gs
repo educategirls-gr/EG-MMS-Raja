@@ -3267,14 +3267,14 @@ function getDistrictAllMeetings(district) {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var meetings = [];
 
-    // 1. Plan Meetings - Planned / Follow-up only (Cancelled/Postponed go to their own sheets)
+    // 1. Plan Meetings - Planned / Follow-up / Postponed (at its new date) (Cancelled/Postponed go to their own sheets)
     var planSheet = ss.getSheetByName(MEETINGS_SHEET);
     if (planSheet) {
       var pd = (sheetRows_(MEETINGS_SHEET) || []);
       for (var i = 1; i < pd.length; i++) {
         if (normDist_(pd[i][1]) !== distN) continue;
         var st = (pd[i][13] || 'Planned').toString();
-        if (st !== 'Planned' && st !== 'Follow-up') continue;
+        if (st !== 'Planned' && st !== 'Follow-up' && st !== 'Postponed') continue;
         meetings.push({
           meetingId:    (pd[i][0]  || '').toString(),
           employeeName: (pd[i][2]  || '').toString(),
@@ -3286,7 +3286,8 @@ function getDistrictAllMeetings(district) {
           purpose:      (pd[i][11] || '').toString(),
           colleagueName:(pd[i][17] || '').toString(),
           colleaguePost:(pd[i][18] || '').toString(),
-          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '', reason: '',
+          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '',
+          reason: st === 'Postponed' ? (pd[i][16] || '').toString() : '',
           block: (pd[i][COL_PLAN_SKBLOCK-1] || '').toString().trim(), officerBlock: offB(pd[i][4])
         });
       }
@@ -3319,30 +3320,9 @@ function getDistrictAllMeetings(district) {
       }
     }
 
-    // 3. Postponed
-    var postSheet = ss.getSheetByName(POSTPONED_SHEET);
-    if (postSheet) {
-      var xd = (sheetRows_(POSTPONED_SHEET) || []), seenP = {};   // a reschedule sent twice shows once
-      for (var i = 1; i < xd.length; i++) {
-        if (normDist_(xd[i][1]) !== distN) continue;
-        var pKey = (xd[i][0] || '') + '|' + dayKey_(xd[i][7]) + '|' + dayKey_(xd[i][8]);
-        if (seenP[pKey]) continue; seenP[pKey] = 1;
-        meetings.push({
-          meetingId:    (xd[i][0] || '').toString(),
-          employeeName: (xd[i][2] || '').toString(),
-          designation:  '',
-          date:         fmtDateVal(xd[i][7]),
-          conductDate:  '',
-          type:         '',
-          adhikariName: (xd[i][4] || '').toString(),
-          adhikariPost: (xd[i][5] || '').toString(),
-          purpose:      (xd[i][6] || '').toString(),
-          reason:       (xd[i][9] || '').toString(),
-          colleagueName:'', colleaguePost:'', keyPoints:'', photoLink:'', momLink:'',
-          status: 'Postponed', block: '', officerBlock: offB(xd[i][3])
-        });
-      }
-    }
+    // 3. Postponed: shown by the plan row above, at its new date (12 Oct 2026).
+    //    The Postponed Meetings tab is the history of each move; listing it as
+    //    well put the meeting at its old date, twice, and never at the new one.
 
     // 4. Cancelled
     var cancelSheet = ss.getSheetByName(CANCELLED_SHEET);
@@ -3391,14 +3371,14 @@ function getStateAllMeetings() {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var meetings = [];
 
-    // 1. Plan Meetings - Planned / Follow-up only
+    // 1. Plan Meetings - Planned / Follow-up / Postponed (at its new date)
     var planSheet = ss.getSheetByName(MEETINGS_SHEET);
     if (planSheet) {
       var pd = (sheetRows_(MEETINGS_SHEET) || []);
       for (var i = 1; i < pd.length; i++) {
         if (!pd[i][0]) continue;
         var st = (pd[i][13] || 'Planned').toString();
-        if (st !== 'Planned' && st !== 'Follow-up') continue;
+        if (st !== 'Planned' && st !== 'Follow-up' && st !== 'Postponed') continue;
         meetings.push({
           meetingId:    (pd[i][0]  || '').toString(),
           district:     (pd[i][1]  || '').toString(),
@@ -3411,7 +3391,8 @@ function getStateAllMeetings() {
           purpose:      (pd[i][11] || '').toString(),
           colleagueName:(pd[i][17] || '').toString(),
           colleaguePost:(pd[i][18] || '').toString(),
-          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '', reason: ''
+          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '',
+          reason: st === 'Postponed' ? (pd[i][16] || '').toString() : ''
         });
       }
     }
@@ -3443,31 +3424,9 @@ function getStateAllMeetings() {
       }
     }
 
-    // 3. Postponed
-    var postSheet = ss.getSheetByName(POSTPONED_SHEET);
-    if (postSheet) {
-      var xd = (sheetRows_(POSTPONED_SHEET) || []), seenP = {};   // a reschedule sent twice shows once
-      for (var i = 1; i < xd.length; i++) {
-        if (!xd[i][0]) continue;
-        var pKey = xd[i][0] + '|' + dayKey_(xd[i][7]) + '|' + dayKey_(xd[i][8]);
-        if (seenP[pKey]) continue; seenP[pKey] = 1;
-        meetings.push({
-          meetingId:    (xd[i][0] || '').toString(),
-          district:     (xd[i][1] || '').toString(),
-          employeeName: (xd[i][2] || '').toString(),
-          designation:  '',
-          date:         fmtDateVal(xd[i][7]),
-          conductDate:  '',
-          type:         '',
-          adhikariName: (xd[i][4] || '').toString(),
-          adhikariPost: (xd[i][5] || '').toString(),
-          purpose:      (xd[i][6] || '').toString(),
-          reason:       (xd[i][9] || '').toString(),
-          colleagueName:'', colleaguePost:'', keyPoints:'', photoLink:'', momLink:'',
-          status: 'Postponed'
-        });
-      }
-    }
+    // 3. Postponed: shown by the plan row above, at its new date (12 Oct 2026).
+    //    The Postponed Meetings tab is the history of each move; listing it as
+    //    well put the meeting at its old date, twice, and never at the new one.
 
     // 4. Cancelled
     var cancelSheet = ss.getSheetByName(CANCELLED_SHEET);

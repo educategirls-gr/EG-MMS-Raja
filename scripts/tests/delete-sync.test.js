@@ -120,6 +120,17 @@ ok('postponed meeting: event moved to the new day at 11:00 for an hour',
    JSON.stringify({ p1, start: ev.start && ev.start.toString(), end: ev.end && ev.end.toString() }));
 ok('postponing the same meeting to the same day again changes nothing', ctx.postponeMeeting({ meetingId: 'MTG-E', email: D, newDate: nd, originalDate: day(3) }).already === true);
 
+// the district, block and state lists show it once, at its new date (12 Oct 2026)
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const ndLabel = parseInt(nd.slice(8), 10) + ' ' + MN[parseInt(nd.slice(5, 7), 10) - 1] + ' ' + nd.slice(0, 4);
+const inDist = ctx.getDistrictAllMeetings('BARAN').filter(m => m.meetingId === 'MTG-E');
+ok('district list: the postponed meeting once, at its new date, saying it was moved',
+   inDist.length === 1 && inDist[0].status === 'Postponed' && inDist[0].date === ndLabel && /Postponed from/.test(inDist[0].reason), JSON.stringify(inDist));
+const inState = ctx.getStateAllMeetings().filter(m => m.meetingId === 'MTG-E');
+ok('state list: the same, once, at its new date', inState.length === 1 && inState[0].date === ndLabel, JSON.stringify(inState));
+ok('every kind is listed: planned, follow-up, postponed, cancelled',
+   ['Planned', 'Postponed', 'Cancelled'].every(s => ctx.getStateAllMeetings().some(m => m.status === s)), JSON.stringify(ctx.getStateAllMeetings().map(m => m.meetingId + ':' + m.status)));
+
 // 7. postponed before it ever had an event: the hourly sync makes one at the new day
 ctx.postponeMeeting({ meetingId: 'MTG-G', email: D, newDate: nd, originalDate: day(3), district: 'BARAN' });
 const s1 = ctx.syncCalendarEvents('live', 20);
