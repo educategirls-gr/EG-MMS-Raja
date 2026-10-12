@@ -7183,6 +7183,78 @@ function EMP_seedOne(email, name, role, district, designation, zone) {
   return n;
 }
 
+// ── Employee_DB names to the official record (12 Oct 2026) ───────────────
+// Editor helpers, for Alok ("khud sahi kar do"). EMP_fixNames_preview() only
+// writes the list of changes to the log; EMP_fixNames_apply() makes them,
+// then refreshes the sign-in copy and clears the caches. Both look at the
+// sheet as it is now and match by value, never by row number, and a second
+// run finds nothing left to do.
+//   District (A) and Additional Districts (H): the official name, so
+//   BALOTARA becomes BALOTRA and JALOR becomes JALORE.
+//   Block (B): only the spellings checked against the official record, and
+//   only for someone in that district. Anything else that does not match the
+//   record is listed for the team, never guessed.
+var EMP_BLOCK_FIXES = {
+  'JAISALMER|FATHEGARH':   'FATEHGARH',
+  'JALORE|SAYALA':         'SAYLA',
+  'JHALAWAR|MANOHARTHANA': 'MANOHAR THANA',
+  'JHALAWAR|JHALARAPATAN': 'JHALRAPATAN',
+  'RAJSAMAND|DELWADA':     'DELWARA',
+  'UDAIPUR|PHALASIYA':     'PHALASIYAN',
+  'UDAIPUR|RISHABHDEV':    'RISHABHDEO',
+  'UDAIPUR|KURABAD':       'KURABAR'
+};
+function EMP_fixNames_preview() { return empFixNames_(false); }
+function EMP_fixNames_apply()   { return empFixNames_(true); }
+function empFixNames_(apply) {
+  var ws = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(EMPLOYEE_SHEET);
+  if (!ws) { Logger.log('Employee_DB not found.'); return 0; }
+  var data = ws.getDataRange().getValues(), NLc = String.fromCharCode(10);
+  var changes = [], leftover = [];
+  function list(v) { return (v || '').toString().split(',').map(function(x) { return x.trim(); }).filter(String); }
+  for (var i = 1; i < data.length; i++) {
+    var name = (data[i][2] || '').toString().trim();
+    if (!name) continue;
+    var dOld = (data[i][0] || '').toString().trim(), dNew = officialDistrict_(dOld);
+    if (dOld && dNew !== dOld) changes.push({ r: i + 1, c: 1, who: name, col: 'District', from: dOld, to: dNew });
+    var hOld = (data[i][7] || '').toString().trim();
+    var hNew = list(hOld).map(officialDistrict_).join(', ');
+    if (hOld && hNew !== hOld && list(hOld).join(', ') !== hNew) changes.push({ r: i + 1, c: 8, who: name, col: 'Additional Districts', from: hOld, to: hNew });
+    // the person's districts, official names, for the block check
+    var mine = [dNew].concat(list(hOld).map(officialDistrict_)).filter(String);
+    var bOld = (data[i][1] || '').toString().trim();
+    var bNew = list(bOld).map(function(b) {
+      var B = b.toUpperCase();
+      for (var k = 0; k < mine.length; k++) {
+        var fix = EMP_BLOCK_FIXES[mine[k] + '|' + B];
+        if (fix) return fix;
+      }
+      var known = mine.some(function(d) { return (RJ_DISTRICT_BLOCKS[d] || []).indexOf(B) >= 0; });
+      if (!known) leftover.push(name + ' | ' + (mine.join(' + ') || '(no district)') + ' | block ' + b);
+      return b;
+    }).join(', ');
+    if (bOld && bNew !== list(bOld).join(', ')) changes.push({ r: i + 1, c: 2, who: name, col: 'Block', from: bOld, to: bNew });
+  }
+  var out = [(apply ? 'CHANGED ' : 'WOULD CHANGE ') + changes.length + ' cell(s) in Employee_DB:'];
+  changes.forEach(function(x) { out.push('   row ' + x.r + '  ' + x.who + '  ' + x.col + ': "' + x.from + '" -> "' + x.to + '"'); });
+  out.push('');
+  out.push('Not in the official record for the person\'s district(s), left as they are for the team (' + leftover.length + '):');
+  leftover.forEach(function(x) { out.push('   ' + x); });
+  if (apply && changes.length) {
+    changes.forEach(function(x) { ws.getRange(x.r, x.c).setValue(x.to); });
+    SpreadsheetApp.flush();
+    try { EMP_refreshMirror(); } catch (e) { out.push('Sign-in copy not refreshed: ' + e.message + '. Run EMP_refreshMirror() once.'); }
+    try { CACHE_clearAll(); } catch (e2) {}
+    out.push('');
+    out.push('Sign-in copy refreshed and caches cleared. People in the renamed districts see the new name after their next sign-in.');
+  } else if (!apply) {
+    out.push('');
+    out.push('Nothing was written. Run EMP_fixNames_apply() to make these changes.');
+  }
+  Logger.log(out.join(NLc));
+  return changes.length;
+}
+
 function EMP_mirrorStatus() {
   var all = PropertiesService.getScriptProperties().getProperties();
   var m = empMirrorRead_();
