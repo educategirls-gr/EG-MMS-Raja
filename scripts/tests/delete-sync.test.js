@@ -28,8 +28,11 @@ const sheets = {
     row('MTG-C', D, 'Jaswinder Singh', 'Planned', 'ev-C'),
     row('MTG-E', D, 'Jaswinder Singh', 'Planned', 'ev-E'),
     row('MTG-G', D, 'Jaswinder Singh', 'Planned', ''),
-    row('MTG-H', D, 'Jaswinder Singh', 'Planned', 'ev-broken')],
-  'Conducted Meetings': [['Meeting ID']], 'Postponed Meetings': [['Meeting ID']], 'Cancelled Meetings': [['Meeting ID']] };
+    row('MTG-H', D, 'Jaswinder Singh', 'Planned', 'ev-broken'),
+    row('MTG-F', F, 'Seema Pankaj', 'Planned', ''),
+    row('MTG-K', D, 'Jaswinder Singh', 'Conducted', '')],
+  'Conducted Meetings': [['Meeting ID']], 'Postponed Meetings': [['Meeting ID']], 'Cancelled Meetings': [['Meeting ID']],
+  'Deleted Meetings': [['Meeting ID']] };
 function sheet(rows) {
   const cell = (r, c) => ({ getValue: () => (rows[r - 1] || [])[c - 1] === undefined ? '' : rows[r - 1][c - 1],
     setValue: (v) => { while (rows.length < r) rows.push([]); rows[r - 1][c - 1] = v; }, setNumberFormat: noop });
@@ -80,8 +83,13 @@ ok('gone from the district list at once', !ctx.getDistrictAllMeetings('BARAN').m
 ok('its calendar event deleted', events['ev-A'].deleted === true);
 
 // 3. who may delete what
-const r2 = ctx.deleteMeeting('MTG-B', F);
-ok('Field still cannot delete, not even their own', r2.success === false && /Field/.test(r2.message) && ids().includes('MTG-B'), JSON.stringify(r2));
+// Field may delete their own now (12 Oct 2026), and the row is kept in the
+// Deleted Meetings tab with who deleted it.
+const r2 = ctx.deleteMeeting('MTG-F', F);
+const Del = sheets['Deleted Meetings'];
+ok('Field deletes their own meeting', r2.success === true && !ids().includes('MTG-F'), JSON.stringify(r2));
+ok('the deleted row is kept in Deleted Meetings, with who deleted it', Del.some(r => r[0] === 'MTG-F' && r[11] === F), JSON.stringify(Del));
+ok('a meeting already held cannot be deleted', /not been held/.test(ctx.deleteMeeting('MTG-K', D).message) && ids().includes('MTG-K'));
 const r3 = ctx.deleteMeeting('MTG-B', D);
 ok('District cannot delete someone else\'s meeting', r3.success === false && /only your own/.test(r3.message) && ids().includes('MTG-B') && !events['ev-B'].deleted, JSON.stringify(r3));
 const r4 = ctx.deleteMeeting('MTG-B', 'stranger@example.org');

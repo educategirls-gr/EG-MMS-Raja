@@ -543,6 +543,9 @@
     <div class="nav-item" id="nav-list" onclick="showView('list')">
       <span class="nav-icon">📋</span><span>My Meetings</span>
     </div>
+    <div class="nav-item" id="nav-block" onclick="showView('block')" style="display:none;">
+      <span class="nav-icon">🏘️</span><span>Block Meetings</span>
+    </div>
     <div class="nav-item" id="nav-district" onclick="showView('district')" style="display:none;">
       <span class="nav-icon">🏢</span><span>District Meetings</span>
     </div>
@@ -570,7 +573,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.15 &middot; 12 Oct 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.16 &middot; 12 Oct 2026</div>
   </div>
 </div>
 
@@ -607,6 +610,10 @@
     <div id="view-create" class="view active">
       <div class="card">
         <div class="card-title">📋 Plan Your Meeting</div>
+        <div id="edit-banner" style="display:none;font-size:13px;line-height:1.5;color:#1E40AF;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+          <span>✏️ Editing this meeting:</span> <b id="edit-mid"></b>
+          <a href="#" onclick="cancelEdit();return false;" style="color:#7B1010;font-weight:600;margin-left:8px;">Cancel</a>
+        </div>
         <div class="form-section-label">Meeting Type <span class="req">*</span></div>
         <div class="mtg-type-grid">
           <div class="mtg-type-card" data-val="One-on-One" onclick="setMeetingType('One-on-One', this)">
@@ -714,7 +721,7 @@
             <label>Meeting Agenda <span class="req">*</span></label>
             <textarea id="meetingAgenda" placeholder="What do you want out of this meeting? For example: ask for block-wise enrolment data, get permission to identify preraks in the block"></textarea>
             <div class="char-note" id="cc-meetingAgenda"></div>
-            <div style="margin-top:10px;">
+            <div style="margin-top:10px;" id="docs-row">
               <label style="display:block;margin-bottom:6px;">Meeting Documents <span style="color:#9CA3AF;font-weight:400">(optional)</span>
                 <span style="color:#9CA3AF;font-weight:400;font-size:11px;">PDF / Word / Excel / PPT only - up to 5 files, 5MB each. (Photos go in the Conduct step.)</span>
               </label>
@@ -810,6 +817,7 @@
             </div>
           </div>
           <div id="delete-meeting-row" style="border-top:1px solid #F3F4F6;padding-top:10px;text-align:right;">
+            <button onclick="editMeetingRow()" style="background:none;border:1px solid #BFDBFE;color:#1D4ED8;font-size:12px;cursor:pointer;border-radius:6px;padding:5px 12px;font-weight:600;margin-right:6px;">✏️ Edit Meeting</button>
             <button onclick="deleteMeetingRow()" style="background:none;border:1px solid #FECACA;color:#DC2626;font-size:12px;cursor:pointer;border-radius:6px;padding:5px 12px;font-weight:600;">Delete Meeting</button>
           </div>
         </div>
@@ -876,7 +884,7 @@
           <div class="form-row">
             <div class="field full">
               <label>4. What came out of this meeting? <span class="req">*</span></label>
-              <select id="c-outcome">
+              <select id="c-outcome" onchange="onOutcomeChange()">
                 <option value="">Select the outcome</option>
                 <option value="Commitment">Commitment obtained, the official agreed to do something</option>
                 <option value="Information">Information or data received</option>
@@ -884,7 +892,9 @@
                 <option value="Courtesy">Introduction or courtesy visit</option>
                 <option value="Awaiting">Issue raised, waiting for their response</option>
                 <option value="Nothing">Nothing concrete yet</option>
+                <option value="Other">Other (please specify)</option>
               </select>
+              <input type="text" id="c-outcome-other" maxlength="300" placeholder="What came out of it, in a few words" style="display:none;margin-top:8px;">
               <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Answer honestly. A courtesy visit is a normal and useful part of the work, and marking it as one is not a poor result.</div>
             </div>
           </div>
@@ -997,6 +1007,7 @@
         <p style="font-size:13px;color:#6B7280;margin-bottom:24px;">This meeting will appear in Manage Meetings.</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <button class="btn-reset" onclick="closeSuccessModal()">Close</button>
+          <button class="btn-submit" id="success-conduct-btn" onclick="conductFromSuccess()" style="display:none;padding:10px 24px;font-size:13px;background:#166534;">✅ It has already happened: record it now</button>
           <button class="btn-submit" onclick="goToManageFromSuccess()" style="padding:10px 24px;font-size:13px;background:#B45309;">⚙️ Manage Meeting</button>
           <button class="btn-submit" onclick="newMeetingFromSuccess()" style="padding:10px 24px;font-size:13px;">+ New Meeting</button>
         </div>
@@ -1053,6 +1064,9 @@
             <option value="Postponed">Postponed</option>
             <option value="Cancelled">Cancelled</option>
           </select>
+          <select id="dm-block" onchange="dmRender()" style="flex-shrink:0;padding:8px 10px;font-size:13px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;">
+            <option value="">All Blocks</option>
+          </select>
           <input type="text" id="dm-search" placeholder="Search employee, stakeholder, purpose..." oninput="dmRender()" style="flex:1;">
           <button class="btn-dl" onclick="dmCSV()">&#8595; Download CSV</button>
         </div>
@@ -1079,10 +1093,15 @@
         <!-- District Filter + Status Filter + Search + Download -->
         <div class="rep-search-bar">
           <div id="sm-district" class="ds-box"></div>
-          <!-- This screen shows conducted meetings only, so a status filter has
-               nothing left to choose between. It stays in the page, hidden,
-               because smRender and smCSV both read its value. -->
-          <select id="sm-status" style="display:none;"><option value=""></option></select>
+          <!-- Every status since 12 Oct 2026: State looks at what is planned too. -->
+          <select id="sm-status" onchange="smRender()" style="flex-shrink:0;padding:8px 10px;font-size:13px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;">
+            <option value="">All Status</option>
+            <option value="Planned">Planned</option>
+            <option value="Follow-up">Follow-up</option>
+            <option value="Conducted">Conducted</option>
+            <option value="Postponed">Postponed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
           <input type="text" id="sm-search" placeholder="Search district, employee, stakeholder..." oninput="smRender()" style="flex:1;">
           <button class="btn-dl" onclick="smCSV()">&#8595; Download CSV</button>
         </div>
@@ -1378,7 +1397,10 @@
     _rbadge.style.background = _roleColors[_role] || '#6B7280';
     _rbadge.style.color = '#fff';
 
-    // Show role-specific meetings tab
+    // Show role-specific meetings tab. Block staff see their own block (12 Oct 2026).
+    if (_role === 'Field') {
+      document.getElementById('nav-block').style.display = '';
+    }
     if (_role === 'District') {
       document.getElementById('nav-district').style.display = '';
     }
@@ -1423,11 +1445,9 @@
       // screen, so there is nothing to tell the user.
     });
 
-    // Field role: hide "Delete Meeting" - prevents fake-meeting create-then-delete (keeps full audit trail)
-    if (_role === 'Field') {
-      var _delRow = document.getElementById('delete-meeting-row');
-      if (_delRow) _delRow.style.display = 'none';
-    }
+    // Everyone may edit or delete their own meeting not yet held (12 Oct 2026).
+    // A deleted one is kept in the sheet's Deleted Meetings tab, so the record
+    // that once kept Field out of this is still there.
 
     var parts = SESSION.name.trim().split(' ');
     var initials = parts.length >= 2
@@ -1442,7 +1462,8 @@
 
     var today = dayStr();
     document.getElementById('meetingDate').value = today;
-    document.getElementById('meetingDate').min   = today;
+    // A day back is allowed (12 Oct 2026): called in, met, and planned afterwards.
+    document.getElementById('meetingDate').min   = dayStr(new Date(Date.now() - 864e5));
 
     gasFetch('getDropdownData', { email: SESSION.email }, populateDropdowns, function() {
       document.getElementById('adhikariPost').innerHTML   = '<option value="">- Error loading -</option>';
@@ -1474,10 +1495,13 @@
     district: { title: 'District Meetings', sub: 'All meetings in your district' },
     zone:     { title: 'Zone Meetings',     sub: 'All meetings across your zone' },
     state:    { title: 'State Meetings',    sub: 'All meetings across the state' },
-    analytics:{ title: 'Analytics',         sub: '' }
+    analytics:{ title: 'Analytics',         sub: '' },
+    block:    { title: 'Block Meetings',    sub: 'All meetings in your block' }
   };
   function showView(view) {
-    ['create','manage','list','district','zone','state','analytics'].forEach(function(v) {
+    // Editing a meeting ends when the officer goes anywhere else.
+    if (view !== 'create' && typeof EDIT_MID !== 'undefined' && EDIT_MID) exitEdit();
+    ['create','manage','list','district','zone','state','analytics','block'].forEach(function(v) {
       var vEl = document.getElementById('view-' + v);
       var nEl = document.getElementById('nav-'  + v);
       if (vEl) vEl.classList.remove('active');
@@ -1486,7 +1510,8 @@
     AN_VIEWS.forEach(function(s) { var n = document.getElementById('nav-an-' + s); if (n) n.classList.remove('active'); });
     document.querySelector('.content-area').classList.toggle('analytics-on', view === 'analytics');
     document.getElementById('topbar-open').style.display = view === 'analytics' ? '' : 'none';
-    document.getElementById('view-' + view).classList.add('active');
+    // Block Meetings is the District Meetings screen, filled with one block.
+    document.getElementById('view-' + (view === 'block' ? 'district' : view)).classList.add('active');
     var navEl = document.getElementById('nav-' + view);
     if (navEl) navEl.classList.add('active');
     clearAlerts();
@@ -1494,7 +1519,8 @@
     document.getElementById('topbar-sub').textContent   = TOPBAR[view].sub;
     if (view === 'list')     loadReports();
     if (view === 'manage')   loadManageMeetings();
-    if (view === 'district') loadDistrictMeetings();
+    if (view === 'district') { _dmMode = 'district'; loadDistrictMeetings(); }
+    if (view === 'block')    { _dmMode = 'block';    loadDistrictMeetings(); }
     if (view === 'zone')     loadZoneMeetings();
     if (view === 'state')    loadStateMeetings();
     // Close sidebar on mobile after navigation
@@ -1601,7 +1627,7 @@
     try { sessionStorage.setItem(_MANAGE_KEY, JSON.stringify(list)); } catch (e) {}
   }
 
-  function loadManageMeetings(force) {
+  function loadManageMeetings(force, then) {
     var now = Date.now();
     if (!force && _manageCache.data && (now - _manageCache.ts) < _CACHE_TTL) {
       renderManageMeetings(_manageCache.data);
@@ -1618,6 +1644,7 @@
       _manageCache = { data: list, ts: Date.now() };
       writeStoredManage(list);
       renderManageMeetings(list);
+      if (typeof then === 'function') then();
     }, function(e) {
       console.error('getMyMeetings failed:', e);
       if (stored && stored.length) return;    // already showing something usable
@@ -1803,10 +1830,12 @@
     document.getElementById('c-kp-said').value = '';
     document.getElementById('c-kp-next').value = '';
     var _oc = document.getElementById('c-outcome'); if (_oc) _oc.value = '';
+    var _oco = document.getElementById('c-outcome-other'); if (_oco) _oco.value = '';
     var _mm = document.getElementById('c-make-mom'); if (_mm) _mm.checked = false;
     var _kph = document.getElementById('c-kp-hint');
     if (_kph) { _kph.style.display = 'none'; _kph.dataset.warned = ''; }
     restoreConductDraft(m.meetingId);
+    onOutcomeChange(true);
     onMomToggle();
     vnReset();
     paintAllCharNotes();
@@ -1975,7 +2004,15 @@
   // never find out. So keep it as they type and put it back if the save fails.
   // Photos are deliberately not kept: five files at 3MB each would not fit in
   // browser storage, so the message says to pick them again.
-  var _DRAFT_FIELDS = ['ct-h','ct-m','ct-ap','c-kp-what','c-kp-said','c-kp-next','c-outcome','c-fu-date','cft-h','cft-m','cft-ap'];
+  var _DRAFT_FIELDS = ['ct-h','ct-m','ct-ap','c-kp-what','c-kp-said','c-kp-next','c-outcome','c-outcome-other','c-fu-date','cft-h','cft-m','cft-ap'];
+  // "Other" asks what it was, in the officer's words (12 Oct 2026).
+  function onOutcomeChange(keep) {
+    var other = document.getElementById('c-outcome').value === 'Other';
+    var box = document.getElementById('c-outcome-other');
+    if (!box) return;
+    box.style.display = other ? '' : 'none';
+    if (!other && !keep) box.value = '';
+  }
   function draftKey(meetingId) {
     return 'eg_draft_' + ((SESSION && SESSION.email) || '') + '_' + (meetingId || '');
   }
@@ -2052,6 +2089,9 @@
     if (!kp) { showModalAlert('conduct', 'Please write what happened in the meeting.'); return; }
     var outcome = document.getElementById('c-outcome').value;
     if (!outcome) { showModalAlert('conduct', 'Please choose what came out of this meeting.'); return; }
+    if (outcome === 'Other' && !v('c-outcome-other')) {
+      showModalAlert('conduct', 'Please write what the outcome was.'); markFields(['c-outcome-other']); return;
+    }
 
     var followUp = null;
     if (document.getElementById('c-fu-toggle').checked) {
@@ -2169,6 +2209,7 @@
       colleagueName: m.colleagueName || '', colleaguePost: m.colleaguePost || '',
       conductDate: date, conductTime: time, keyPoints: kp, photos: photos,
       outcome: outcome || '',
+      outcomeOther: outcome === 'Other' ? v('c-outcome-other') : '',
       skipMom: !(document.getElementById('c-make-mom') || {}).checked,
       followUp: followUp || null
     }, function(res) {
@@ -2620,19 +2661,24 @@
   var _dmMonth = new Date().getMonth();
   var _dmYear  = new Date().getFullYear();
 
+  // 'district' for a district lead, 'block' for block staff: the same screen,
+  // filled by getDistrictAllMeetings or getBlockAllMeetings.
+  var _dmMode = 'district';
   function loadDistrictMeetings(force) {
     _dmMonth = new Date().getMonth();
     _dmYear  = new Date().getFullYear();
     dmUpdateLabel();
     var _dmt = document.getElementById('dm-title');
-    if (_dmt) _dmt.textContent = '🏢 District Meetings - ' + ACTIVE_DISTRICT;
+    if (_dmt) _dmt.textContent = _dmMode === 'block'
+      ? '🏘️ Block Meetings - ' + (SESSION.block || '')
+      : '🏢 District Meetings - ' + ACTIVE_DISTRICT;
     var now = Date.now();
     if (!force && _distCache.data && (now - _distCache.ts) < _CACHE_TTL) {
       _dmAll = _distCache.data;
       dmRender();
       return;
     }
-    var _dmKey = 'dist_' + (ACTIVE_DISTRICT || '').toLowerCase();
+    var _dmKey = _dmMode === 'block' ? 'block_' + (SESSION.email || '').toLowerCase() : 'dist_' + (ACTIVE_DISTRICT || '').toLowerCase();
     var _dmStored = force ? null : storedList(_dmKey);
     if (_dmStored && _dmStored.length) {
       _dmAll = _dmStored;
@@ -2642,8 +2688,9 @@
         '<div class="empty-state"><div class="empty-icon">⏳</div><p>Loading...</p></div>';
       document.getElementById('dm-count').textContent = '';
     }
-    gasFetch('getDistrictAllMeetings', { district: ACTIVE_DISTRICT }, function(list) {
-      _distCache = { data: list || [], ts: Date.now() };
+    gasFetch(_dmMode === 'block' ? 'getBlockAllMeetings' : 'getDistrictAllMeetings', { district: ACTIVE_DISTRICT }, function(list) {
+      if (!Array.isArray(list)) list = [];
+      _distCache = { data: list, ts: Date.now() };
       _dmAll = _distCache.data;
       storeList(_dmKey, _dmAll);
       dmRender();
@@ -2657,14 +2704,15 @@
   function dmUpdateLabel() {
     var now = new Date();
     document.getElementById('dm-month-label').textContent = _MONTHS[_dmMonth] + ' ' + _dmYear;
-    var isCurrent = (_dmYear === now.getFullYear() && _dmMonth === now.getMonth());
+    // Up to a year ahead, so meetings planned for later can be looked at (12 Oct 2026).
+    var isCurrent = (_dmYear * 12 + _dmMonth) >= (now.getFullYear() * 12 + now.getMonth() + 12);
     document.getElementById('dm-next-btn').disabled = isCurrent;
     document.getElementById('dm-next-btn').style.opacity = isCurrent ? '0.4' : '1';
   }
   function dmPrevMonth() { _dmMonth--; if (_dmMonth < 0) { _dmMonth = 11; _dmYear--; } dmUpdateLabel(); dmRender(); }
   function dmNextMonth() {
     var now = new Date();
-    if (_dmYear === now.getFullYear() && _dmMonth === now.getMonth()) return;
+    if ((_dmYear * 12 + _dmMonth) >= (now.getFullYear() * 12 + now.getMonth() + 12)) return;
     _dmMonth++; if (_dmMonth > 11) { _dmMonth = 0; _dmYear++; }
     dmUpdateLabel(); dmRender();
   }
@@ -2674,9 +2722,32 @@
     return toTs(d);
   }
 
+  // A meeting is in a block when the official sits there or its officer works there.
+  function dmBlocksOf(r) {
+    var out = [];
+    [r.block].concat((r.officerBlock || '').split(',')).forEach(function(b) {
+      b = (b || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      if (b && out.indexOf(b) < 0) out.push(b);
+    });
+    return out;
+  }
+  function dmFillBlocks() {
+    var sel = document.getElementById('dm-block');
+    if (!sel) return;
+    var seen = {};
+    _dmAll.forEach(function(r) { dmBlocksOf(r).forEach(function(b) { seen[b] = 1; }); });
+    var list = Object.keys(seen).sort(), keep = sel.value, sig = list.join('|');
+    if (sel.getAttribute('data-sig') === sig) return;
+    sel.innerHTML = '<option value="">All Blocks</option>';
+    list.forEach(function(b) { var o = document.createElement('option'); o.value = b; o.textContent = b; sel.appendChild(o); });
+    if (list.indexOf(keep) >= 0) sel.value = keep;
+    sel.setAttribute('data-sig', sig);
+  }
   function dmRender() {
+    dmFillBlocks();
     var q  = (document.getElementById('dm-search').value || '').trim().toLowerCase();
     var st = document.getElementById('dm-status').value;
+    var blk = (document.getElementById('dm-block') || {}).value || '';
     var monthStart = new Date(_dmYear, _dmMonth, 1).getTime();
     var monthEnd   = new Date(_dmYear, _dmMonth + 1, 0, 23, 59, 59).getTime();
 
@@ -2684,6 +2755,7 @@
       var ts = dmGetDate(r);
       if (ts < monthStart || ts > monthEnd) return false;
       if (st && r.status !== st) return false;
+      if (blk && dmBlocksOf(r).indexOf(blk) < 0) return false;
       if (q) {
         var hay = [r.meetingId, r.employeeName, r.designation,
                    r.adhikariName, r.adhikariPost, r.purpose,
@@ -2743,12 +2815,19 @@
         if (r.photoLink) links += '<a href="' + esc(r.photoLink) + '" target="_blank" class="rep-link rep-link-photo">Photos</a>';
         if (links) details += '<div style="margin-top:3px;">' + links + '</div>';
         if (r.colleagueName) details += '<div style="color:#9CA3AF;font-size:11px;margin-top:2px;">Sathi: ' + esc(r.colleagueName) + (r.colleaguePost ? ' (' + esc(r.colleaguePost) + ')' : '') + '</div>';
+        // A district lead can send the officer feedback (12 Oct 2026); block staff only read.
+        if (_dmMode === 'district' && SESSION.role !== 'Field') {
+          details += '<div style="margin-top:5px;"><button class="btn-feedback" data-mid="' + esc(r.meetingId) +
+                     '" data-who="' + esc(r.employeeName) + '" data-with="' + esc(r.adhikariName) +
+                     '">✉ Send feedback</button></div>';
+        }
       } else if (r.reason) {
         details = '<span style="color:#92400E;font-size:11px;">' + esc(r.reason) + '</span>';
       }
 
       if (r.docUrl) details += '<div style="margin-top:3px;"><a href="' + esc(r.docUrl) + '" target="_blank" class="rep-link" style="background:#0F766E;color:#fff;">📎 Documents</a></div>';
       var rowBg = i % 2 === 0 ? '#ffffff' : '#F9FAFB';
+      var _bl = dmBlocksOf(r);
       html +=
         '<tr style="background:' + rowBg + ';border-bottom:1px solid #F3F4F6;vertical-align:top;">' +
           '<td style="padding:8px 6px;color:#9CA3AF;">' + (i+1) + '</td>' +
@@ -2758,6 +2837,7 @@
           '</td>' +
           '<td style="padding:8px 6px;">' +
             '<div style="font-weight:600;color:#111827;">' + esc(r.employeeName) + '</div>' +
+            (_bl.length ? '<div style="color:#9CA3AF;font-size:10.5px;">' + esc(_bl.join(', ')) + '</div>' : '') +
             '<div style="color:#6B7280;font-size:11px;">' + esc(r.designation) + '</div>' +
           '</td>' +
           '<td style="padding:8px 6px;">' +
@@ -2775,6 +2855,7 @@
 
     html += '</tbody></table></div>';
     document.getElementById('dm-content').innerHTML = html;
+    bindFeedbackButtons('dm-content');
   }
 
   function dmCSV() {
@@ -2857,14 +2938,14 @@
   function smUpdateLabel() {
     var now = new Date();
     document.getElementById('sm-month-label').textContent = _MONTHS[_smMonth] + ' ' + _smYear;
-    var isCurrent = (_smYear === now.getFullYear() && _smMonth === now.getMonth());
+    var isCurrent = (_smYear * 12 + _smMonth) >= (now.getFullYear() * 12 + now.getMonth() + 12);   // a year ahead
     document.getElementById('sm-next-btn').disabled = isCurrent;
     document.getElementById('sm-next-btn').style.opacity = isCurrent ? '0.4' : '1';
   }
   function smPrevMonth() { _smMonth--; if (_smMonth < 0) { _smMonth = 11; _smYear--; } smUpdateLabel(); smRender(); }
   function smNextMonth() {
     var now = new Date();
-    if (_smYear === now.getFullYear() && _smMonth === now.getMonth()) return;
+    if ((_smYear * 12 + _smMonth) >= (now.getFullYear() * 12 + now.getMonth() + 12)) return;
     _smMonth++; if (_smMonth > 11) { _smMonth = 0; _smYear++; }
     smUpdateLabel(); smRender();
   }
@@ -2881,10 +2962,7 @@
     var monthEnd   = new Date(_smYear, _smMonth + 1, 0, 23, 59, 59).getTime();
 
     var filtered = _smAll.filter(function(r) {
-      // Conducted only. This screen is for reading what happened and putting a
-      // question to the officer, and neither applies to a meeting that has not
-      // been held yet. What is coming up is on the Analytics portal.
-      if (r.status !== 'Conducted') return false;
+      // Every status (12 Oct 2026, Alok: State sees planned, conducted, all of it).
       var ts = smGetDate(r);
       if (ts < monthStart || ts > monthEnd) return false;
       if (distMiss(dst, r.district)) return false;
@@ -2906,7 +2984,7 @@
     if (!filtered.length) {
       document.getElementById('sm-content').innerHTML =
         '<div class="empty-state"><div class="empty-icon">🗺️</div>' +
-        '<p>No conducted meetings in ' + _MONTHS[_smMonth] + ' ' + _smYear + '</p></div>';
+        '<p>No meetings in ' + _MONTHS[_smMonth] + ' ' + _smYear + '</p></div>';
       return;
     }
 
@@ -3475,6 +3553,7 @@
       purpose: purpose2, agenda: agenda,
       colleagueName: v('colleagueName'), colleaguePost: v('colleaguePost')
     };
+    if (EDIT_MID) { data.meetingId = EDIT_MID; loading(true); doUpdateMeeting(data); return; }
     // Collect optional meeting documents
     var docInput = document.getElementById('meetingDocs');
     var docFiles = (docInput && docInput.files) ? Array.prototype.slice.call(docInput.files) : [];
@@ -3506,6 +3585,10 @@
       if (res.success) {
         invalidateFrontCache();
         if (res.duplicate) showToast('This plan was already saved, so it was not filed a second time.');
+        // Its time has already passed: it was planned after the meeting, so offer to record it now.
+        var st = new Date(data.meetingDate + 'T00:00:00'), tm = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(data.meetingTime || '');
+        if (tm) st.setHours((parseInt(tm[1], 10) % 12) + (/pm/i.test(tm[3]) ? 12 : 0), parseInt(tm[2], 10));
+        _justSaved = (st.getTime() < Date.now()) ? { id: res.meetingId, date: data.meetingDate, time: data.meetingTime } : null;
         showSuccessModal(res.meetingId);
         resetForm();
       } else if (res.message === 'ACCESS_REVOKED') {
@@ -4028,6 +4111,7 @@
     el.style.display = html ? 'block' : 'none';
   }
   function savePlanDraft() {
+    if (EDIT_MID) return;   // an edit is not a new plan to keep
     var d = {};
     _PLAN_FIELDS.forEach(function(id){ var el = document.getElementById(id); if (el) d[id] = el.value; });
     d._type = selectedMeetingType;
@@ -4064,7 +4148,14 @@
     var d = null;
     try { d = JSON.parse(localStorage.getItem(planDraftKey()) || 'null'); } catch (e) { d = null; }
     if (!d) return;
-
+    fillPlanForm(d);
+    planDraftNote('<div style="margin-top:10px;font-size:12px;line-height:1.5;color:#1E40AF;' +
+      'background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:9px 11px;">' +
+      'Picked up where you left off. Any files you had attached need choosing again. ' +
+      '<a href="#" onclick="discardPlanDraft();return false;" style="color:#7B1010;font-weight:600;">Start fresh</a></div>');
+  }
+  // The plan form filled from a draft, or from a meeting being edited.
+  function fillPlanForm(d) {
     function put(id) { var el = document.getElementById(id); if (el && d[id]) el.value = d[id]; }
 
     put('plan-district');
@@ -4095,11 +4186,72 @@
     // to be nudged by hand.
     if (typeof paintAllCharNotes === 'function') paintAllCharNotes();
     if (typeof paintMetLine === 'function') paintMetLine();
+  }
 
-    planDraftNote('<div style="margin-top:10px;font-size:12px;line-height:1.5;color:#1E40AF;' +
-      'background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:9px 11px;">' +
-      'Picked up where you left off. Any files you had attached need choosing again. ' +
-      '<a href="#" onclick="discardPlanDraft();return false;" style="color:#7B1010;font-weight:600;">Start fresh</a></div>');
+  // ── Edit a meeting not yet held (12 Oct 2026) ─────────────────
+  // The plan form, filled with the meeting; Save sends updateMeeting. Files
+  // already attached stay as they are, so the documents box is hidden.
+  var EDIT_MID = '';
+  function hasOption(sel, val) {
+    return !!sel && Array.prototype.some.call(sel.options, function(o) { return o.value === val; });
+  }
+  function draftFromMeeting(m) {
+    var d = { 'plan-district': m.district, adhikariBlock: m.adhikariBlock, stakeholderType: m.department,
+              adhikariName: m.adhikariName, meetingAgenda: m.agenda,
+              colleagueName: m.colleagueName, colleaguePost: m.colleaguePost, _type: m.type, _dur: m.duration };
+    var ts = toTs(m.date); if (ts) d.meetingDate = dayStr(new Date(ts));
+    var tm = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(m.meetingTime || '');
+    if (tm) { d['mt-h'] = String(parseInt(tm[1], 10)); d['mt-m'] = tm[2]; d['mt-ap'] = tm[3].toUpperCase(); }
+    if (hasOption(document.getElementById('adhikariPost'), m.adhikariPost)) d.adhikariPost = m.adhikariPost;
+    else if (m.adhikariPost) { d.adhikariPost = 'Other'; d.otherPost = m.adhikariPost; }
+    if (hasOption(document.getElementById('meetingPurpose'), m.purpose)) d.meetingPurpose = m.purpose;
+    else if (m.purpose) { d.meetingPurpose = 'Other'; d.otherPurpose = m.purpose; }
+    return d;
+  }
+  function editMeetingRow() {
+    var m = _manageMeetings[MODAL_IDX];
+    if (!m) return;
+    closeActionModal();
+    showView('create');
+    EDIT_MID = m.meetingId;
+    resetForm(true);
+    var pd = document.getElementById('plan-district');
+    if (pd && m.district && !hasOption(pd, m.district)) {   // a district not in this person's list still shows
+      var o = document.createElement('option'); o.value = o.textContent = m.district; pd.appendChild(o);
+    }
+    fillPlanForm(draftFromMeeting(m));
+    planDraftNote('');
+    document.getElementById('edit-mid').textContent = m.meetingId + ' (' + m.adhikariName + ', ' + m.date + ')';
+    document.getElementById('edit-banner').style.display = '';
+    var dr = document.getElementById('docs-row'); if (dr) dr.style.display = 'none';
+    document.getElementById('btn-submit').textContent = 'Save Changes';
+    document.getElementById('topbar-title').textContent = 'Edit Meeting';
+    var _mc = document.querySelector('.main-content'); if (_mc) _mc.scrollTop = 0;
+  }
+  function exitEdit() {
+    EDIT_MID = '';
+    document.getElementById('edit-banner').style.display = 'none';
+    var dr = document.getElementById('docs-row'); if (dr) dr.style.display = '';
+    document.getElementById('btn-submit').textContent = 'Save Meeting Plan';
+    resetForm(true);
+    restorePlanDraft();
+  }
+  function cancelEdit() { exitEdit(); showView('manage'); }
+  function doUpdateMeeting(data) {
+    gasPost('updateMeeting', data, function(res) {
+      loading(false);
+      if (res.success) {
+        invalidateFrontCache();
+        exitEdit();
+        showView('manage');
+        loadManageMeetings(true);
+        showToast('Meeting updated.');
+      } else if (res.message === 'ACCESS_REVOKED') {
+        forceLogout('Your access has been revoked.');
+      } else {
+        err('Error: ' + res.message);
+      }
+    }, function(e) { loading(false); err('Error: ' + e.message); });
   }
   function bindPlanDraft() {
     _PLAN_FIELDS.forEach(function(id) {
@@ -4587,9 +4739,10 @@
     say(8000,  'Still saving. The server is slow right now, please do not press Save again.');
     say(25000, 'Still saving. Nothing is lost, and pressing Save again would only file the meeting twice.');
   }
-  function resetForm() {
-    // Covers Reset and a successful save, which both land here.
-    clearPlanDraft();
+  function resetForm(keepDraft) {
+    // Covers Reset and a successful save, which both land here. Leaving an
+    // edit passes keepDraft, so a plan being typed before it is not lost.
+    if (!keepDraft) clearPlanDraft();
     ['mt-h','mt-m','mt-ap','adhikariName','stakeholderType','adhikariPost','otherPost',
      'meetingPurpose','otherPurpose','meetingAgenda','colleagueName','colleaguePost'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.value = '';
@@ -4600,7 +4753,7 @@
     document.querySelectorAll('.dur-btn').forEach(function(b) { b.classList.remove('selected'); });
     var today = dayStr();
     document.getElementById('meetingDate').value = today;
-    document.getElementById('meetingDate').min   = today;
+    document.getElementById('meetingDate').min   = dayStr(new Date(Date.now() - 864e5));   // a day back is allowed
     document.getElementById('row-other-post').style.display    = 'none';
     document.getElementById('row-other-purpose').style.display = 'none';
     document.getElementById('colleague-picker').style.display  = 'none';
@@ -4613,8 +4766,11 @@
   }
 
   // ── Success Modal ────────────────────────────────────────────
+  var _justSaved = null;   // a plan whose time has already passed, to record straight away
   function showSuccessModal(meetingId) {
     document.getElementById('success-mtg-id').textContent = 'Meeting ID: ' + meetingId;
+    var cb = document.getElementById('success-conduct-btn');
+    if (cb) cb.style.display = (_justSaved && _justSaved.id === meetingId) ? '' : 'none';
     document.getElementById('success-overlay').style.display = '';
     document.getElementById('success-modal').style.display   = '';
   }
@@ -4624,6 +4780,27 @@
   }
   function newMeetingFromSuccess()  { closeSuccessModal(); resetForm(); showView('create'); }
   function goToManageFromSuccess()  { closeSuccessModal(); showView('manage'); }
+  // Planned after it happened: open its conduct form at once, with its own day and time.
+  function conductFromSuccess() {
+    var js = _justSaved;
+    closeSuccessModal();
+    if (!js) return;
+    showView('manage');
+    loadManageMeetings(true, function() {
+      var idx = -1;
+      _manageMeetings.forEach(function(m, i) { if (m.meetingId === js.id) idx = i; });
+      if (idx < 0) { showToast('Open it from Manage Meetings in a moment, it is still on its way.'); return; }
+      openActionModal(idx);
+      setModalPhase('conduct');
+      if (js.date <= dayStr()) document.getElementById('c-date').value = js.date;
+      var tm = /(\d{1,2}):(\d{2})\s*(AM|PM)/i.exec(js.time || '');
+      if (tm) {
+        document.getElementById('ct-h').value  = String(parseInt(tm[1], 10));
+        document.getElementById('ct-m').value  = tm[2];
+        document.getElementById('ct-ap').value = tm[3].toUpperCase();
+      }
+    });
+  }
 
   // ── Toast ────────────────────────────────────────────────────
   // One timer at a time: the timer of an earlier message used to hide a newer
@@ -4971,6 +5148,23 @@
     'Saving in the background. You can carry on.': 'पृष्ठभूमि में सहेजा जा रहा है। आप अपना काम जारी रख सकते हैं।',
     'Meeting not found.': 'बैठक नहीं मिली।',
     'Meeting deleted successfully.': 'बैठक सफलतापूर्वक हटा दी गई।',
+    'Edit Meeting': 'बैठक बदलें',
+    '✏️ Edit Meeting': '✏️ बैठक बदलें',
+    '✏️ Editing this meeting:': '✏️ इस बैठक को बदल रहे हैं:',
+    'Save Changes': 'बदलाव सहेजें',
+    'Meeting updated.': 'बैठक बदल दी गई।',
+    'You can edit only your own meetings.': 'आप केवल अपनी बैठकें बदल सकते हैं।',
+    'Only a meeting that has not been held yet can be edited.': 'केवल वही बैठक बदली जा सकती है जो अभी हुई नहीं है।',
+    'Only a meeting that has not been held yet can be deleted.': 'केवल वही बैठक हटाई जा सकती है जो अभी हुई नहीं है।',
+    'A meeting can be planned at most one day back. Please check the date.': 'बैठक अधिकतम एक दिन पीछे की तारीख में दर्ज हो सकती है। कृपया तारीख देखें।',
+    '✅ It has already happened: record it now': '✅ बैठक हो चुकी है: अभी दर्ज करें',
+    'Other (please specify)': 'अन्य (कृपया बताएँ)',
+    'What came out of it, in a few words': 'क्या निकला, कुछ शब्दों में',
+    'Please write what the outcome was.': 'कृपया लिखें कि परिणाम क्या रहा।',
+    'Block Meetings': 'ब्लॉक की बैठकें',
+    'All meetings in your block': 'आपके ब्लॉक की सभी बैठकें',
+    'All Blocks': 'सभी ब्लॉक',
+    'All Status': 'सभी स्थिति',
     'You can delete only your own meetings.': 'आप केवल अपनी बैठकें हटा सकते हैं।',
 
     // Meeting lists

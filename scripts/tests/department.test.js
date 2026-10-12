@@ -83,12 +83,16 @@ ctx.CACHE_clearAll();
 const id = P[1][0];
 const cr = ctx.conductMeeting({ meetingId: id, district: 'BARAN', email: S, employeeName: 'Seema Pankaj', adhikariName: 'Ramesh Meena',
   adhikariPost: 'Chief Block Education Officer/BEO', purpose: 'Enrollment', keyPoints: 'Discussed: x', conductDate: '2026-10-06',
-  photos: [], skipMom: false, followUp: { date: iso, time: '10:00 AM' } });
+  photos: [], skipMom: false, followUp: { date: iso, time: '10:00 AM' },
+  outcome: 'Other', outcomeOther: 'Asked us to come back with the district plan' });
 const C = sheets['Conducted Meetings'];
 ok('conducted', cr.success === true, JSON.stringify(cr));
 ok('department carried from the plan row to Conducted Meetings column AG', C[1][32] === 'Education Department' && C[0][32] === 'Stakeholder Type', 'AG=' + C[1][32]);
 ok('follow-up plan row carries it too', P[2] && P[2][24] === 'Education Department', P[2] && P[2][24]);
 ok('MoM document names the department', paras.indexOf('Department: Education Department') >= 0, paras.filter(p => /Department/.test(p)).join('|'));
+// outcome "Other, please specify" (12 Oct 2026): AF says Other, AH holds the words, with its header
+ok('outcome Other: AF says Other, AH the words of the officer, header written',
+   C[1][31] === 'Other' && C[1][33] === 'Asked us to come back with the district plan' && C[0][33] === 'Outcome (Other)', JSON.stringify([C[1][31], C[1][33], C[0][33]]));
 
 // 5. portal data
 ctx.CACHE_clearAll();

@@ -638,7 +638,7 @@ function apiResponse(e, method) {
     var ADMIN  = { bulkUpdateEmployeeDB: 1, importFromSource: 1, peekSourceSheet: 1 };
     // Writes and heavy requests that the pages send only as a POST. Sign-in is
     // deliberately not in this list: it is left exactly as it is.
-    var POST_ONLY = { saveMeeting:1, conductMeeting:1, postponeMeeting:1, cancelMeeting:1, uploadGovtMom:1,
+    var POST_ONLY = { saveMeeting:1, updateMeeting:1, conductMeeting:1, postponeMeeting:1, cancelMeeting:1, uploadGovtMom:1,
                       askMeetings:1, transcribeVoice:1, sendMeetingFeedback:1 };
 
     // Turned away at the door while the document is unreachable, so the queue
@@ -701,9 +701,12 @@ function apiResponse(e, method) {
         else if (action === 'getZoneTeamEmployees') result = getZoneTeamEmployees(session.zone, session.email);
         else if (action === 'getPlanDistricts')     result = getPlanDistricts(session.role, session.zone, (session.districts && session.districts.length) ? session.districts : [session.district]);
         else if (action === 'getDistrictAllMeetings') {
-          // Active district: own/charge districts for District role; any for State
-          result = getDistrictAllMeetings(resolveActiveDistrict_(session, e.parameter.district));
+          // Active district: own/charge districts for District role; any for State.
+          // Block officers see their own block (getBlockAllMeetings), not the district.
+          result = (role === 'Field') ? { success: false, message: 'FORBIDDEN' }
+                 : getDistrictAllMeetings(resolveActiveDistrict_(session, e.parameter.district));
         }
+        else if (action === 'getBlockAllMeetings')  result = getBlockAllMeetings(session);
         else if (action === 'getStateAllMeetings')  result = (role === 'State')
                                                        ? getStateAllMeetings()
                                                        : { success: false, message: 'FORBIDDEN' };
@@ -741,6 +744,10 @@ function apiResponse(e, method) {
           body.email = session.email; body.employeeName = session.name;
           body.district = resolveActiveDistrict_(session, body.district); body.designation = session.designation; body.block = session.block;
           result = saveMeeting(body);
+        }
+        else if (action === 'updateMeeting') {
+          body.district = resolveActiveDistrict_(session, body.district);
+          result = updateMeeting(session, body);
         }
         else if (action === 'conductMeeting')   { body.email = session.email; result = conductMeeting(body); }
         else if (action === 'uploadGovtMom')    { result = uploadGovtMom(body, session); }
@@ -1762,7 +1769,7 @@ function sendMeetingFeedback(session, meetingId, text, reqId) {
   if (text.length > 4000) text = text.substring(0, 4000);
 
   var role = (session.role || '').toString();
-  if (role !== 'State' && role !== 'Zone') return { success:false, message:'FORBIDDEN' };
+  if (role !== 'State' && role !== 'Zone' && role !== 'District') return { success:false, message:'FORBIDDEN' };
 
   var cd = sheetRows_(CONDUCTED_SHEET) || [];
   var m = null;
@@ -1786,6 +1793,12 @@ function sendMeetingFeedback(session, meetingId, text, reqId) {
   if (role === 'Zone') {
     var mine = findZoneKey_((session.zone || '').toString());
     if (!mine || districtToZone_(m.district) !== mine) return { success:false, message:'FORBIDDEN' };
+  }
+
+  // A district lead may write about meetings in their own districts (12 Oct 2026).
+  if (role === 'District') {
+    var myDs = (session.districts && session.districts.length) ? session.districts : [session.district];
+    if (!myDs.some(function(d) { return normDist_(d) === normDist_(m.district); })) return { success:false, message:'FORBIDDEN' };
   }
 
   var from = (session.name || session.email || 'A colleague').toString();
@@ -1837,6 +1850,20 @@ function sendMeetingFeedback(session, meetingId, text, reqId) {
 // ------------------------------------------------------------
 //  MEETINGS - SAVE
 // ------------------------------------------------------------
+// A meeting may be filed up to a day back (12 Oct 2026): someone is called in,
+// the meeting happens, and it is planned and conducted afterwards. The page
+// offers nothing earlier; this stops a date typed or sent by hand.
+var PLAN_DATE_MSG = 'A meeting can be planned at most one day back. Please check the date.';
+function planDateAllowed_(d) {
+  var s = (d || '').toString().trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return true;   // not the form's own format: left to the other checks
+  // Apps Script runs dates in the script's time zone, so the local parts are
+  // the day in India.
+  var y = new Date(Date.now() - 86400000);
+  var yesterday = y.getFullYear() + '-' + ('0' + (y.getMonth() + 1)).slice(-2) + '-' + ('0' + y.getDate()).slice(-2);
+  return s >= yesterday;
+}
+
 function saveMeeting(data) {
   try {
     // Re-verify employee is still active before saving
@@ -1860,6 +1887,8 @@ function saveMeeting(data) {
       // plan that did land from being filed twice.
       return { success: false, message: 'BODY_MISSING', missing: req };
     }
+
+    if (!planDateAllowed_(data.meetingDate)) return { success: false, message: PLAN_DATE_MSG };
 
     if (sheetBreakerTripped_()) return { success: false, message: SHEET_BUSY_MSG };
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -2440,6 +2469,11 @@ function conductMeetingNow_(payload) {
       if (!cSheet.getRange(1, COL_CON_OUTCOME).getValue()) cSheet.getRange(1, COL_CON_OUTCOME).setValue('Outcome');
       var oc = (payload.outcome || '').toString().trim();
       if (oc) cSheet.getRange(clr, COL_CON_OUTCOME).setValue(oc);
+      var ocNote = (payload.outcomeOther || '').toString().trim();
+      if (oc === 'Other' && ocNote) {
+        if (!cSheet.getRange(1, COL_CON_OUTCOME_NOTE).getValue()) cSheet.getRange(1, COL_CON_OUTCOME_NOTE).setValue('Outcome (Other)');
+        cSheet.getRange(clr, COL_CON_OUTCOME_NOTE).setValue(ocNote);
+      }
     } catch (sbErr) { /* both are optional, never fail the conduct over them */ }
 
     // 5. Update status in Plan Meetings to "Conducted" - NEVER delete, keeps master ledger intact for dashboard reporting
@@ -2824,6 +2858,11 @@ function cancelMeeting_(payload) {
 // ------------------------------------------------------------
 //  DELETE MEETING
 // ------------------------------------------------------------
+// Everyone may delete a meeting of their own that has not been held (12 Oct
+// 2026, Field included). The row goes to the "Deleted Meetings" tab first,
+// with who deleted it and when, so the record that kept Field out of this
+// (a meeting made and then deleted) is still there.
+var DELETED_SHEET = 'Deleted Meetings';
 // A deleted meeting, follow-ups included, kept showing in Manage Meetings,
 // the district lists and the portal for up to fifteen minutes, and stayed on
 // the officer's calendar for good: this was the one write that cleared no
@@ -2841,10 +2880,6 @@ function deleteMeeting_(meetingId, email) {
     var emp  = email ? getEmployeeByEmail(email) : null;
     if (!emp) return { success: false, message: 'ACCESS_REVOKED' };
     var role = emp.role ? emp.role.toString().trim().toLowerCase() : '';
-    // Field role cannot delete - prevents fake-meeting create-then-delete (full audit trail)
-    if (role === 'field') {
-      return { success: false, message: 'Delete not allowed for Field role.' };
-    }
     var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet = ss.getSheetByName(MEETINGS_SHEET);
     if (!sheet) return { success: false, message: 'Sheet not found.' };
@@ -2855,7 +2890,18 @@ function deleteMeeting_(meetingId, email) {
         if (owner !== email && role !== 'state') {
           return { success: false, message: 'You can delete only your own meetings.' };
         }
+        if (!EDITABLE_STATUSES[(data[i][13] || '').toString().trim()]) {
+          return { success: false, message: 'Only a meeting that has not been held yet can be deleted.' };
+        }
         var eventId = data[i][COL_CAL_EVENT - 1], district = (data[i][1] || '').toString().trim();
+        var del = ss.getSheetByName(DELETED_SHEET);
+        if (!del) {
+          del = ss.insertSheet(DELETED_SHEET);
+          del.appendRow(['Meeting ID','District','Employee Name','Email','Meeting Date','Meeting Time','Meeting Type',
+                         'Stakeholder Name','Stakeholder Post','Meeting Purpose','Status','Deleted By','Deleted At']);
+        }
+        del.appendRow([data[i][0], data[i][1], data[i][2], data[i][4], fmtDateVal(data[i][5]), fmtTimeVal(data[i][6]), data[i][8],
+                       data[i][9], data[i][10], data[i][11], data[i][13], email, new Date().toLocaleString('en-IN')]);
         sheet.deleteRow(i + 1);
         calEventDrop_(eventId);
         invalidateUser(owner, district);
@@ -2867,6 +2913,113 @@ function deleteMeeting_(meetingId, email) {
   } catch(err) {
     return { success: false, message: err.message };
   }
+}
+
+// ── Edit a meeting not yet held (12 Oct 2026) ─────────────────────────────
+// Everything the plan form asks can be changed while the meeting is Planned,
+// Follow-up or Postponed; the id, the officer and the status stay. Own
+// meetings only (State: any). The calendar event is taken down and the hourly
+// sync makes it again with the new details, and a colleague added here gets
+// the invitation the others had when it was planned.
+var EDITABLE_STATUSES = { '': 1, 'Planned': 1, 'Follow-up': 1, 'Postponed': 1 };
+function updateMeeting(session, data) {
+  return withScriptLock_(function() { return updateMeeting_(session, data); });
+}
+function updateMeeting_(session, data) {
+  try {
+    var email = (session && session.email || '').toString().trim().toLowerCase();
+    if (!email || !getEmployeeByEmail(email)) return { success: false, message: 'ACCESS_REVOKED' };
+    var id = (data.meetingId || '').toString().trim();
+    var req = [];
+    if (!id) req.push('meeting id');
+    if (!(data.meetingDate  || '').toString().trim()) req.push('date');
+    if (!(data.adhikariName || '').toString().trim()) req.push('stakeholder name');
+    if (!(data.adhikariPost || '').toString().trim()) req.push('stakeholder post');
+    if (!(data.purpose      || '').toString().trim()) req.push('purpose');
+    if (req.length) return { success: false, message: 'BODY_MISSING', missing: req };
+    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(MEETINGS_SHEET);
+    if (!sheet) return { success: false, message: 'Meetings sheet not found.' };
+    var rows = sheet.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if ((rows[i][0] || '').toString().trim() !== id) continue;
+      var r = rows[i], owner = (r[4] || '').toString().trim().toLowerCase();
+      if (owner !== email && (session.role || '').toString() !== 'State') {
+        return { success: false, message: 'You can edit only your own meetings.' };
+      }
+      if (!EDITABLE_STATUSES[(r[13] || '').toString().trim()]) {
+        return { success: false, message: 'Only a meeting that has not been held yet can be edited.' };
+      }
+      // The one-day-back limit applies to a new date, so an overdue meeting's
+      // agenda can still be corrected without moving it.
+      if (dayKey_(r[5]) !== (data.meetingDate || '').toString().trim() && !planDateAllowed_(data.meetingDate)) {
+        return { success: false, message: PLAN_DATE_MSG };
+      }
+      var at = i + 1, oldDistrict = (r[1] || '').toString().trim();
+      var district = officialDistrict_(data.district || oldDistrict);
+      var put = function(col, v) { sheet.getRange(at, col).setValue(v); };
+      put(2, district);
+      put(6, data.meetingDate);
+      sheet.getRange(at, 7).setNumberFormat('@'); put(7, data.meetingTime || '');   // time kept as text
+      put(8, data.duration || '');
+      put(9, meetingTypeOf_(data.meetingType));
+      put(10, data.adhikariName); put(11, data.adhikariPost);
+      put(12, data.purpose);      put(13, data.agenda || '');
+      put(18, data.colleagueName || ''); put(19, data.colleaguePost || '');
+      put(COL_PLAN_SKBLOCK, data.adhikariBlock || '');
+      put(COL_PLAN_DEPT, data.department || '');
+      calEventDrop_(r[COL_CAL_EVENT - 1]); put(COL_CAL_EVENT, '');
+      var before = {};
+      colleagueNames_(r[17]).forEach(function(nm) { before[nm.toLowerCase()] = 1; });
+      var mail = {};
+      for (var k in data) mail[k] = data[k];
+      mail.district = district; mail.email = owner;
+      mail.employeeName = (r[2] || '').toString(); mail.designation = (r[3] || '').toString();
+      colleagueNames_(data.colleagueName).forEach(function(nm) {
+        if (before[nm.toLowerCase()]) return;
+        try { sendColleagueNotificationTo_(mail, id, nm); } catch (me) { /* a mail must not fail the edit */ }
+      });
+      invalidateUser(owner, district);
+      if (normDist_(oldDistrict) !== normDist_(district)) invalidateUser(owner, oldDistrict);
+      if (owner !== email) invalidateUser(email);
+      return { success: true, meetingId: id };
+    }
+    return { success: false, message: 'Meeting not found.' };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ── Block Meetings: what a block officer sees (12 Oct 2026) ──────────────
+// Alok: people in a block see every meeting in their own block, of every
+// type and status. A meeting is in a block when the official sits there
+// (Stakeholder Block) or when the officer who holds it works there.
+function blockKey_(b) { return (b || '').toString().trim().toUpperCase().replace(/\s+/g, ' '); }
+function blockSet_(s) {
+  var o = {};
+  (s || '').toString().split(',').forEach(function(x) { var k = blockKey_(x); if (k) o[k] = 1; });
+  return o;
+}
+function officerBlockMap_() {
+  var map = empMirrorRead_() || {}, out = {};
+  for (var em in map) out[em.toLowerCase()] = (map[em] && map[em].block || '').toString();
+  return out;
+}
+function getBlockAllMeetings(session) {
+  var me = getEmployeeByEmail((session && session.email || '').toString().trim().toLowerCase()) || session || {};
+  var mine = blockSet_(me.block);
+  if (!Object.keys(mine).length) return [];
+  var ds = (me.districts && me.districts.length) ? me.districts : [me.district];
+  var out = [], seen = {};
+  ds.forEach(function(d) {
+    if (!d) return;
+    var list = getDistrictAllMeetings(d);
+    (Array.isArray(list) ? list : []).forEach(function(m) {
+      var inBlock = mine[blockKey_(m.block)] || Object.keys(blockSet_(m.officerBlock)).some(function(b) { return mine[b]; });
+      var key = m.meetingId + '|' + m.status;
+      if (inBlock && !seen[key]) { seen[key] = 1; out.push(m); }
+    });
+  });
+  return out;
 }
 
 // ------------------------------------------------------------
@@ -3104,6 +3257,10 @@ function getDistrictAllMeetings(district) {
     // (BALOTARA, BALOTRA) are one district, with one cache key.
     var distN    = normDist_(district);
     var cacheKey = 'distMtg_' + distN.toLowerCase();
+    // Each row says which block the official sits in and which block(s) the
+    // officer works in, for the block filter and Block Meetings (12 Oct 2026).
+    var _offMap = officerBlockMap_();
+    function offB(email) { return _offMap[(email || '').toString().trim().toLowerCase()] || ''; }
     var hit      = cGet(cacheKey);
     if (hit) return hit;
 
@@ -3129,7 +3286,8 @@ function getDistrictAllMeetings(district) {
           purpose:      (pd[i][11] || '').toString(),
           colleagueName:(pd[i][17] || '').toString(),
           colleaguePost:(pd[i][18] || '').toString(),
-          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '', reason: ''
+          status: st, conductDate: '', keyPoints: '', photoLink: '', momLink: '', reason: '',
+          block: (pd[i][COL_PLAN_SKBLOCK-1] || '').toString().trim(), officerBlock: offB(pd[i][4])
         });
       }
     }
@@ -3155,7 +3313,8 @@ function getDistrictAllMeetings(district) {
           momLink:      (cd[i][17] || '').toString(),
           colleagueName:(cd[i][18] || '').toString(),
           colleaguePost:(cd[i][19] || '').toString(),
-          status: 'Conducted', reason: ''
+          status: 'Conducted', reason: '',
+          block: (cd[i][COL_CON_SKBLOCK-1] || '').toString().trim(), officerBlock: offB(cd[i][4])
         });
       }
     }
@@ -3180,7 +3339,7 @@ function getDistrictAllMeetings(district) {
           purpose:      (xd[i][6] || '').toString(),
           reason:       (xd[i][9] || '').toString(),
           colleagueName:'', colleaguePost:'', keyPoints:'', photoLink:'', momLink:'',
-          status: 'Postponed'
+          status: 'Postponed', block: '', officerBlock: offB(xd[i][3])
         });
       }
     }
@@ -3207,7 +3366,7 @@ function getDistrictAllMeetings(district) {
           colleagueName:(xc[i][13] || '').toString(),
           colleaguePost:(xc[i][14] || '').toString(),
           keyPoints:'', photoLink:'', momLink:'',
-          status: 'Cancelled'
+          status: 'Cancelled', block: '', officerBlock: offB(xc[i][4])
         });
       }
     }
@@ -4657,6 +4816,7 @@ function askAllMeetings_() {
            officer:(cd[j][2]||'').toString().trim(), name:(cd[j][9]||'').toString().trim(),
            post:(cd[j][10]||'').toString().trim(), purpose:(cd[j][11]||'').toString().trim(),
            notes:askOneLine_(cd[j][15]), outcome:(cd[j][COL_CON_OUTCOME-1]||'').toString().trim(),
+           outcomeNote:askOneLine_(cd[j][COL_CON_OUTCOME_NOTE-1]),
            next:askOneLine_(cd[j][COL_TAG_NEXT-1]), category:(cd[j][COL_TAG_CAT-1]||'').toString().trim(),
            govtMom:askOneLine_(cd[j][COL_TAG_MOMSUM-1]) });
   }
@@ -4785,7 +4945,7 @@ function askRow_(m) {
            'Officer: ' + (m.officer || '-'),
            'Met: ' + (m.name || '-') + (m.post ? ', ' + m.post : '') + (m.dept ? ' (' + m.dept + ')' : '')];
   if (m.purpose)  p.push('Purpose: ' + m.purpose);
-  if (m.outcome)  p.push('Outcome: ' + m.outcome);
+  if (m.outcome)  p.push('Outcome: ' + m.outcome + (m.outcomeNote ? ' (' + m.outcomeNote + ')' : ''));
   if (m.notes)    p.push('Notes: ' + m.notes);
   if (m.next)     p.push('Next: ' + m.next);
   if (m.govtMom)  p.push('Govt MoM: ' + m.govtMom);
@@ -5819,6 +5979,8 @@ var COL_CON_DEPT     = 33;   // AG in Conducted Meetings
 // they were there, and this number will end up judging them, so a model's
 // guess is the wrong thing to build it on.
 var COL_CON_OUTCOME  = 32;   // AF in Conducted Meetings
+// What "Other" was, in the officer's words (12 Oct 2026); AF then says Other.
+var COL_CON_OUTCOME_NOTE = 34;   // AH in Conducted Meetings
 
 function parseStart_(dateStr, timeStr) {
   var p = (dateStr||'').toString().trim().split(' '); if (p.length < 3) return null;

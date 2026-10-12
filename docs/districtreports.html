@@ -392,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     EG GR Meeting Management System, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.15 &middot; 12 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.16 &middot; 12 Oct 2026</span>
   </div>
 </div>
 
@@ -651,7 +651,7 @@
 
     </div>
 
-    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.15 &middot; 12 Oct 2026</div>
+    <div class="mob-version">EG GR Meeting Management System, <span class="state-name"></span><br>Version 1.16 &middot; 12 Oct 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -1111,11 +1111,13 @@
   var OUTCOME_LABEL = {
     Commitment:'Commitment obtained', Information:'Information received',
     Permission:'Permission granted',  Courtesy:'Courtesy visit',
-    Awaiting:'Awaiting response',     Nothing:'Nothing concrete yet'
+    Awaiting:'Awaiting response',     Nothing:'Nothing concrete yet',
+    Other:'Other'
   };
   var OUTCOME_COLOR = {
     Commitment:'#065F46', Information:'#1D4ED8', Permission:'#0F766E',
-    Courtesy:'#92400E',   Awaiting:'#9a5b0e',    Nothing:'#6B7280'
+    Courtesy:'#92400E',   Awaiting:'#9a5b0e',    Nothing:'#6B7280',
+    Other:'#7C3AED'
   };
   function renderOutcomes(boxId, pick) {
     var box = document.getElementById(boxId || 'ov-outcomes');
