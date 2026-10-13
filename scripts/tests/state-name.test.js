@@ -23,6 +23,7 @@ function load(state, host) {
   const mail = [];
   const E = {
     STATE_NAME: state, SITE_HOST: host, ALLOWED_DOMAIN: 'educategirls.ngo', OTP_EXPIRY_SEC: 600,
+    APP_SHORT: varVal('APP_SHORT'), APP_NAME: varVal('APP_NAME'),   // the system's name (13 Oct 2026)
     MailApp: { sendEmail: (o) => mail.push(o) },
     CacheService: { getScriptCache: () => ({ put: () => {}, get: () => null }) },
     getEmployeeByEmail: (e) => (e === 'known@educategirls.ngo' ? { name: 'Known Person' } : null),
@@ -41,6 +42,8 @@ const ok = (label, cond, extra) => { console.log((cond ? 'ok   ' : 'FAIL ') + la
 
 const STATE = varVal('STATE_NAME'), HOST = varVal('SITE_HOST');
 ok('Code.gs sets STATE_NAME and SITE_HOST', STATE === 'Rajasthan' && HOST === 'raj.dataimpact.in', STATE + ' / ' + HOST);
+ok('Code.gs names the system GEMS, Government Engagement Management System',
+   varVal('APP_SHORT') === 'GEMS' && varVal('APP_NAME') === 'Government Engagement Management System');
 
 const meeting = { colleagueName: 'Colleague', adhikariName: 'Ramesh Meena', adhikariPost: 'Chief Block Education Officer/BEO',
                   district: 'BARAN', meetingDate: '2026-10-05', meetingTime: '11:00 AM', purpose: 'Enrollment', agenda: 'Agenda',
@@ -54,8 +57,8 @@ function checkAll(state, host, tag) {
   const r = api.sendOTP('Known@educategirls.ngo ');
   const otp = api.mail[0] || {};
   ok(tag + 'OTP still sent and still succeeds', r.success === true && api.mail.length === 1, JSON.stringify(r));
-  ok(tag + 'OTP sender names the state', otp.name === 'EG-MMS ' + state, otp.name);
-  ok(tag + 'OTP subject names the state', otp.subject === 'EG Meeting Management System (' + state + ') - Login OTP', otp.subject);
+  ok(tag + 'OTP sender names the state', otp.name === 'GEMS ' + state, otp.name);
+  ok(tag + 'OTP subject names the state', otp.subject === 'GEMS (' + state + ') - Login OTP', otp.subject);
   ok(tag + 'OTP text names state and site', (otp.body || '').indexOf(state + ' (' + host + ') is: ') > 0 && /is: \d{6}\n/.test(otp.body || ''), (otp.body || '').split('\n')[2]);
   ok(tag + 'OTP still refused for another domain', api.sendOTP('x@gmail.com').success === false);
   ok(tag + 'OTP still refused for someone not in the sheet', api.sendOTP('nobody@educategirls.ngo').success === false && api.mail.length === 1);
@@ -64,7 +67,7 @@ function checkAll(state, host, tag) {
   api.sendMOMNotification(meeting, 'https://docs.google.com/x', 'https://drive.google.com/y', '');
   [['colleague invitation', api.mail[1]], ['MoM email', api.mail[2]]].forEach(([what, m]) => {
     m = m || { htmlBody: '' };
-    ok(tag + what + ': sender names the state', m.name === 'EG-MMS ' + state, m.name);
+    ok(tag + what + ': sender names the state', m.name === 'GEMS ' + state, m.name);
     ok(tag + what + ': header and sign-off name the state',
        m.htmlBody.indexOf('Government Relations, ' + state + '</p>') > 0 && m.htmlBody.indexOf('Government Relations Team, ' + state) > 0);
     ok(tag + what + ': logo from our own site', m.htmlBody.indexOf('src="https://' + host + '/eg-logo.png"') > 0 && m.htmlBody.indexOf('educategirls.ngo/wp-content') < 0);
@@ -104,16 +107,19 @@ ok('docs/state.js says Rajasthan', /var STATE_NAME = 'Rajasthan';/.test(stateJs)
 
 // state.js itself, against a tiny stand-in for the page.
 function runStateJs(titleAttr) {
-  const spans = [{ textContent: '' }, { textContent: 'State' }];
+  const byClass = { '.state-name': [{ textContent: '' }, { textContent: 'State' }],
+                    '.app-short': [{ textContent: '' }], '.app-name': [{ textContent: 'old' }] };
   const title = { getAttribute: () => titleAttr };
   const doc = { title: 'fallback', readyState: 'complete',
-                querySelector: () => title, querySelectorAll: () => spans, addEventListener: () => {} };
+                querySelector: () => title, querySelectorAll: (s) => byClass[s] || [], addEventListener: () => {} };
   new Function('document', 'window', stateJs)(doc, {});
-  return { title: doc.title, spans: spans.map(s => s.textContent) };
+  const text = (k) => byClass[k].map(s => s.textContent);
+  return { title: doc.title, spans: text('.state-name'), short: text('.app-short'), name: text('.app-name') };
 }
-const sj = runStateJs('EG MMS | {STATE} Analytics Portal');
-ok('state.js sets the tab title', sj.title === 'EG MMS | Rajasthan Analytics Portal', sj.title);
+const sj = runStateJs('{APP} | {STATE} Analytics Portal');
+ok('state.js sets the tab title, with the system name', sj.title === 'GEMS | Rajasthan Analytics Portal', sj.title);
 ok('state.js fills every state-name span', sj.spans.every(s => s === 'Rajasthan'), sj.spans.join(','));
+ok('state.js fills the system name spans', sj.short[0] === 'GEMS' && sj.name[0] === 'Government Engagement Management System', JSON.stringify([sj.short, sj.name]));
 
 console.log('\n' + (fails.length ? fails.length + ' FAILED' : 'all checks pass'));
 process.exit(fails.length ? 1 : 0);

@@ -34,7 +34,7 @@ const STATE = { role: 'State', name: 'Brajesh Kumar Sinha', email: 'brajeshkumar
 let w = world();
 let r1 = w.ctx.sendMeetingFeedback(STATE, 'MTG-F1', 'Please share the block list', 'fb123abc');
 ok('first send: one email, to the officer, State Head copied', r1.success && w.mail.length === 1 && w.mail[0].to === 'seema.pankaj@educategirls.ngo' && w.mail[0].cc === STATE.email, JSON.stringify(r1));
-ok('sender names the state', w.mail[0].name === 'EG-MMS Rajasthan', w.mail[0].name);
+ok('sender names the state', w.mail[0].name === 'GEMS Rajasthan', w.mail[0].name);
 let r2 = w.ctx.sendMeetingFeedback(STATE, 'MTG-F1', 'Please share the block list', 'fb123abc');
 ok('same id again (reply was lost): success, no second email', r2.success && r2.repeat === true && w.mail.length === 1 && r2.sentTo === 'Seema Pankaj', JSON.stringify(r2));
 let r3 = w.ctx.sendMeetingFeedback(STATE, 'MTG-F1', 'A different note', 'fb999xyz');

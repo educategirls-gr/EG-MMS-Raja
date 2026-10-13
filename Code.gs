@@ -14,7 +14,14 @@ var DRIVE_ROOT_ID    = '1JcXdxbyTL97cvnQ3bgH-B323rLIKGjVL'; // Rajasthan meeting
 var OTP_EXPIRY_SEC   = 600;
 var ALLOWED_DOMAIN   = 'educategirls.ngo';
 
-// The state this copy of EG-MMS serves, and where its website lives. Every
+// The system's name (13 Oct 2026, Alok): GEMS – Government Engagement
+// Management System; it was EG-MMS, the Meeting Management System. Emails,
+// the MoM, the calendar and the chatbot take it from here, the pages from
+// docs/state.js.
+var APP_SHORT = 'GEMS';
+var APP_NAME  = 'Government Engagement Management System';
+
+// The state this copy of the system serves, and where its website lives. Every
 // email, the monthly report and the AI prompts take the name from here. There
 // is a copy per state (Uttar Pradesh, and Rajasthan since 1 Oct 2026), and
 // someone with access to two of them gets codes and reports from both, so each
@@ -775,7 +782,7 @@ function apiResponse(e, method) {
 function authorizeMailApp() {
   MailApp.sendEmail({
     to: Session.getActiveUser().getEmail(),
-    subject: 'EG MMS - MailApp Authorization Successful',
+    subject: APP_SHORT + ' - MailApp Authorization Successful',
     body: 'MailApp is now authorized. Colleague notifications will work.'
   });
   Logger.log('MailApp authorized successfully.');
@@ -797,7 +804,7 @@ function doGet(e) {
       var loginTmpl = HtmlService.createTemplateFromFile('Index');
       loginTmpl.execUrl = execUrl;
       return loginTmpl.evaluate()
-        .setTitle('EG Meeting Management System')
+        .setTitle(APP_SHORT + ' – ' + APP_NAME)
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
 
@@ -818,14 +825,14 @@ function doGet(e) {
     });
 
     return tmpl.evaluate()
-      .setTitle('EG Meeting Management System')
+      .setTitle(APP_SHORT + ' – ' + APP_NAME)
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   var loginTmpl = HtmlService.createTemplateFromFile('Index');
   loginTmpl.execUrl = execUrl;
   return loginTmpl.evaluate()
-    .setTitle('EG Meeting Management System')
+    .setTitle(APP_SHORT + ' – ' + APP_NAME)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -1329,12 +1336,12 @@ function sendOTP(email) {
   try {
     MailApp.sendEmail({
       to: email,
-      name: 'EG-MMS ' + STATE_NAME,
-      subject: 'EG Meeting Management System (' + STATE_NAME + ') - Login OTP',
+      name: APP_SHORT + ' ' + STATE_NAME,
+      subject: APP_SHORT + ' (' + STATE_NAME + ') - Login OTP',
       body: 'Dear ' + employee.name + ',\n\n' +
-            'Your OTP for EG Meeting Management System, ' + STATE_NAME + ' (' + SITE_HOST + ') is: ' + otp + '\n\n' +
+            'Your OTP for ' + APP_SHORT + ', ' + STATE_NAME + ' (' + SITE_HOST + ') is: ' + otp + '\n\n' +
             'This OTP is valid for 10 minutes. Do not share it with anyone.\n\n' +
-            'Educate Girls Meeting Management System, ' + STATE_NAME
+            'Educate Girls ' + APP_SHORT + ' – ' + APP_NAME + ', ' + STATE_NAME
     });
     return { success: true, message: 'OTP sent to: ' + email, name: employee.name };
   } catch (err) {
@@ -1836,7 +1843,7 @@ function sendMeetingFeedback(session, meetingId, text, reqId) {
       replyTo: session.email,     // and so does a plain Reply
       subject: subj,
       htmlBody: body,
-      name: 'EG-MMS ' + STATE_NAME
+      name: APP_SHORT + ' ' + STATE_NAME
     });
   } catch (e) {
     if (seenKey) { try { seenCache.remove(seenKey); } catch (e2) {} }
@@ -2577,7 +2584,7 @@ function createMoMDoc(d, photoFolderUrl) {
   h.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
   h.editAsText().setForegroundColor('#6B0F0F').setFontSize(18);
 
-  body.appendParagraph('Educate Girls - Meeting Management System')
+  body.appendParagraph('Educate Girls - ' + APP_SHORT + ' – ' + APP_NAME)
       .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
       .editAsText().setFontSize(10).setForegroundColor('#888888').setItalic(true);
   body.appendHorizontalRule();
@@ -2671,7 +2678,7 @@ function createMoMDoc(d, photoFolderUrl) {
   }
 
   body.appendHorizontalRule();
-  body.appendParagraph('Generated: ' + new Date().toLocaleString('en-IN') + '   |   EG Meeting Management System')
+  body.appendParagraph('Generated: ' + new Date().toLocaleString('en-IN') + '   |   ' + APP_SHORT + ' – ' + APP_NAME)
       .editAsText().setFontSize(9).setForegroundColor('#9CA3AF').setItalic(true);
 
   doc.saveAndClose();
@@ -3707,7 +3714,7 @@ function sendColleagueNotificationTo_(data, mtgId, name) {
       '<img src="https://' + SITE_HOST + '/eg-logo.png" ' +
            'style="height:34px;filter:brightness(0) invert(1);opacity:0.9;margin-bottom:12px;display:block;" />' +
       '<h2 style="color:#fff;margin:0 0 4px;font-size:19px;font-weight:700;">Meeting Invitation</h2>' +
-      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations, ' + _emailEsc(STATE_NAME) + '</p>' +
+      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">' + APP_SHORT + ' &ndash; ' + APP_NAME + ' &nbsp;|&nbsp; Government Relations, ' + _emailEsc(STATE_NAME) + '</p>' +
     '</div>' +
 
     // Greeting
@@ -3776,7 +3783,7 @@ function sendColleagueNotificationTo_(data, mtgId, name) {
     // Footer
     '<div style="background:#7B1010;padding:14px 28px;text-align:center;">' +
       '<p style="color:rgba(255,255,255,0.65);font-size:11.5px;margin:0;">' +
-        'This is a system-generated notification from <strong style="color:#fff;">EG Meeting Management System</strong>.<br>' +
+        'This is a system-generated notification from <strong style="color:#fff;">' + APP_SHORT + ' &ndash; ' + APP_NAME + '</strong>.<br>' +
         'Educate Girls &nbsp;|&nbsp; Government Relations Team, ' + _emailEsc(STATE_NAME) +
       '</p>' +
     '</div>' +
@@ -3785,7 +3792,7 @@ function sendColleagueNotificationTo_(data, mtgId, name) {
 
   MailApp.sendEmail({
     to:       colleague.email,
-    name:     'EG-MMS ' + STATE_NAME,
+    name:     APP_SHORT + ' ' + STATE_NAME,
     subject:  subject,
     htmlBody: body
   });
@@ -3820,7 +3827,7 @@ function sendMOMNotificationTo_(data, momUrl, photoFolderUrl, followUpId, name) 
       '<img src="https://' + SITE_HOST + '/eg-logo.png" ' +
            'style="height:34px;filter:brightness(0) invert(1);opacity:0.9;margin-bottom:12px;display:block;" />' +
       '<h2 style="color:#fff;margin:0 0 4px;font-size:19px;font-weight:700;">Minutes of Meeting (MoM)</h2>' +
-      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">EG Meeting Management System &nbsp;|&nbsp; Government Relations, ' + _emailEsc(STATE_NAME) + '</p>' +
+      '<p style="color:rgba(255,255,255,0.7);margin:0;font-size:12px;letter-spacing:0.4px;">' + APP_SHORT + ' &ndash; ' + APP_NAME + ' &nbsp;|&nbsp; Government Relations, ' + _emailEsc(STATE_NAME) + '</p>' +
     '</div>' +
 
     // Greeting
@@ -3896,7 +3903,7 @@ function sendMOMNotificationTo_(data, momUrl, photoFolderUrl, followUpId, name) 
     // Footer
     '<div style="background:#7B1010;padding:14px 28px;text-align:center;">' +
       '<p style="color:rgba(255,255,255,0.65);font-size:11.5px;margin:0;">' +
-        'This is a system-generated notification from <strong style="color:#fff;">EG Meeting Management System</strong>.<br>' +
+        'This is a system-generated notification from <strong style="color:#fff;">' + APP_SHORT + ' &ndash; ' + APP_NAME + '</strong>.<br>' +
         'Educate Girls &nbsp;|&nbsp; Government Relations Team, ' + _emailEsc(STATE_NAME) +
       '</p>' +
     '</div>' +
@@ -3905,7 +3912,7 @@ function sendMOMNotificationTo_(data, momUrl, photoFolderUrl, followUpId, name) 
 
   MailApp.sendEmail({
     to:       colleague.email,
-    name:     'EG-MMS ' + STATE_NAME,
+    name:     APP_SHORT + ' ' + STATE_NAME,
     subject:  subject,
     htmlBody: body
   });
@@ -4973,7 +4980,7 @@ function askMeetings(session, question, history) {
   var known = {}; chosen.forEach(function(l){ known[l.id] = l.m; });
 
   var prompt = [
-    'You are the EG-MMS assistant for the Educate Girls Government Relations team in ' + STATE_NAME + ', India.',
+    'You are the ' + APP_SHORT + ' assistant for the Educate Girls Government Relations team in ' + STATE_NAME + ', India.',
     'You answer questions about their meetings with government officials, using ONLY the data below.',
     'Today is ' + Utilities.formatDate(new Date(now), 'Asia/Kolkata', 'd MMM yyyy') + '. The person asking is ' +
       (session.name || 'a team member') + ' (' + (session.role || 'Field') + '), who can see ' + scope.label + '.',
@@ -5639,7 +5646,7 @@ function buildEscalationEmail_(o) {
       '</div>'+
       (o.keyPoints?'<div style="font-size:12.5px;color:#6b7280;margin-top:10px;"><b style="color:#1f2937;">Note:</b> '+_emailEsc(o.keyPoints.slice(0,300))+'</div>':'')+
     '</td></tr>'+
-    '<tr><td style="padding:18px 28px 24px;"><div style="border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af;">Auto-flagged by EG-MMS from the meeting note. ' + SITE_HOST + '</div></td></tr>'+
+    '<tr><td style="padding:18px 28px 24px;"><div style="border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af;">Auto-flagged by ' + APP_SHORT + ' from the meeting note. ' + SITE_HOST + '</div></td></tr>'+
     '</table></div>';
 }
 
@@ -5883,7 +5890,7 @@ function sendEscalations(mode, limit) {
     var cc = (mode==='live') ? seniors.join(',') : '';
     var subj = 'Escalation: '+(data[i][26]||'Follow-up')+' - '+(data[i][1]||'')+' meeting';
     if (mode !== 'live') subj = '[TEST -> officer:'+email+' | CC senior:'+(seniors.join(',')||'NONE FOUND')+'] '+subj;
-    var opts = { to:to, subject:subj, htmlBody:html, name:'EG-MMS ' + STATE_NAME + ' Alerts' };
+    var opts = { to:to, subject:subj, htmlBody:html, name:APP_SHORT + ' ' + STATE_NAME + ' Alerts' };
     if (cc) opts.cc = cc;
     try {
       MailApp.sendEmail(opts);
@@ -6003,7 +6010,7 @@ function syncCalendarEvents(mode, limit) {
     var desc = 'Stakeholder: ' + (data[i][9]||'') + ' ' + (data[i][10]||'') +
                ((data[i][COL_PLAN_DEPT-1]||'') ? '\nDepartment: ' + data[i][COL_PLAN_DEPT-1] : '') +
                '\nPurpose: ' + (data[i][11]||'') + '\nAgenda: ' + (data[i][12]||'') +
-               '\nType: ' + (data[i][8]||'') + (data[i][17] ? '\nColleague: ' + data[i][17] : '') + '\nvia EG-MMS';
+               '\nType: ' + (data[i][8]||'') + (data[i][17] ? '\nColleague: ' + data[i][17] : '') + '\nvia ' + APP_SHORT;
     var guests = (mode==='live') ? officer : REPORT_TEST_EMAIL;
     try {
       var opts = { description:desc + (hasTime ? '' : '\nTime not specified when planned'), location:(data[i][1]||'').toString(), guests:guests, sendInvites:true };
@@ -6199,7 +6206,7 @@ function buildWeeklyReminder_(o, range) {
     '<tr><td style="padding:16px 28px 0;font-size:13px;color:#6b7280;">If a meeting has moved or will not happen, ' +
       'update it in Manage Meetings so the record stays right.</td></tr>' +
     '<tr><td style="padding:16px 28px 24px;"><div style="border-top:1px solid #e5e7eb;padding-top:12px;font-size:11px;color:#9ca3af;">' +
-      'EG-MMS &middot; https://' + SITE_HOST + '</div></td></tr>' +
+      APP_SHORT + ' &middot; https://' + SITE_HOST + '</div></td></tr>' +
     '</table></div>';
 }
 
@@ -6221,7 +6228,7 @@ function sendWeeklyNudges(mode) {
     var to = (mode === 'live') ? o.email : REPORT_TEST_EMAIL;
     try {
       MailApp.sendEmail({
-        to: to, name: 'EG-MMS ' + STATE_NAME, htmlBody: buildWeeklyReminder_(o, range),
+        to: to, name: APP_SHORT + ' ' + STATE_NAME, htmlBody: buildWeeklyReminder_(o, range),
         subject: (mode !== 'live' ? '[TEST -> ' + o.email + '] ' : '') +
                  'Your meetings this week: ' + o.meetings.length + ' (' + range + ')'
       });
@@ -6463,7 +6470,7 @@ function buildReportEmailHtml(rep, recipientName) {
       '<tr>'+tile('Total',k.total,'','Planned in month')+tile('Conducted',k.conducted,'#166534','This month')+tile('Success',k.success+'%','#7B1010','Conducted vs planned')+'</tr>'+
       '<tr>'+tile('Active Staff',k.activeStaff+' / '+k.totalStaff,'',k.participation+'% participation')+tile('Pending',k.pending,'#9a5b0e','Open in month')+tile('Govt MoM',k.govtMom+' / '+k.conducted,'','Official minutes')+'</tr></table>')+
     perfTable + lb + part + focus + ocSec + relSec + attention + highlights + recommendations +
-    '<tr><td style="padding:24px 30px 26px;"><div style="border-top:1px solid #e5e7eb;padding-top:14px;font-size:11px;color:#9ca3af;line-height:1.6;">Numbers computed from records; summary and recommendations written by AI. Full analytics portal: https://' + SITE_HOST + '/report.html<br>EG-MMS &middot; automated monthly report.</div></td></tr>'+
+    '<tr><td style="padding:24px 30px 26px;"><div style="border-top:1px solid #e5e7eb;padding-top:14px;font-size:11px;color:#9ca3af;line-height:1.6;">Numbers computed from records; summary and recommendations written by AI. Full analytics portal: https://' + SITE_HOST + '/report.html<br>' + APP_SHORT + ' &middot; automated monthly report.</div></td></tr>'+
     '</table></div>';
 }
 
@@ -6486,7 +6493,7 @@ function sendMonthlyReports(mode, monthOverride, roleFilter) {
           .getAs('application/pdf')
           .setName('GR-Report-' + rep.scope.label.replace(/[^A-Za-z0-9]+/g,'-') + '-' + rep.scope.month.replace(/\s/g,'') + '.pdf'));
       } catch(pe) { /* PDF optional - send without it if conversion fails */ }
-      MailApp.sendEmail({ to:to, subject:'Monthly GR Report - ' + rep.scope.label + ' - ' + rep.scope.month, htmlBody:html, name:'EG-MMS ' + STATE_NAME + ' Reports', attachments:attach });
+      MailApp.sendEmail({ to:to, subject:'Monthly GR Report - ' + rep.scope.label + ' - ' + rep.scope.month, htmlBody:html, name:APP_SHORT + ' ' + STATE_NAME + ' Reports', attachments:attach });
       sent.push(to + ' [' + r.role + ': ' + (r.role==='State'?'RJ':r.role==='Zone'?r.zone:r.district) + ']');
     } catch(e){ failed.push(r.email + ' ' + e.message); }
   });

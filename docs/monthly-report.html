@@ -298,7 +298,7 @@
       html+='</ol></section>';
     }
 
-    html+='<footer><div class="legend"><span><span class="swatch" style="background:var(--brand)"></span> Auto-summary (numbers-driven)</span><span><span class="swatch" style="background:var(--muted)"></span> Computed from records</span></div><div>EG-MMS &middot; raj.dataimpact.in</div></footer>';
+    html+='<footer><div class="legend"><span><span class="swatch" style="background:var(--brand)"></span> Auto-summary (numbers-driven)</span><span><span class="swatch" style="background:var(--muted)"></span> Computed from records</span></div><div>'+(window.APP_SHORT||'GEMS')+' &middot; raj.dataimpact.in</div></footer>';
     html+='</div>';
     document.getElementById('root').innerHTML=html;
   }

@@ -57,7 +57,7 @@ ok('live: the test profile\'s High meeting is not sent', w.mail.every(m => m.to 
 ok('live: the State Head is never written to about a test meeting', w.mail.filter(m => /brajesh/.test(m.cc || '')).length === 1);
 ok('live: Resolved and untagged meetings are skipped', w.mail.length === 1);
 ok('live: Seema\'s row marked as sent, the test row left unmarked', Object.prototype.toString.call(w.con[2][29]) === '[object Date]' && !w.con[1][29], 'B=' + w.con[2][29] + ' A=' + w.con[1][29]);
-ok('live: sender names the state', w.mail[0].name === 'EG-MMS Rajasthan Alerts', w.mail[0].name);
+ok('live: sender names the state', w.mail[0].name === 'GEMS Rajasthan Alerts', w.mail[0].name);
 ok('live: run again sends nothing more (sent once)', (w.ctx.sendEscalations('live', 40), w.mail.length === 1));
 
 // Test mode
