@@ -7393,7 +7393,10 @@ var MTG_FIX = {
   id:   'MTG-20261023-143932',
   name: '',                             // Stakeholder Name; '' removes it
   post: 'District Education Officer',   // Stakeholder Post
-  word: 'CEO', to: 'CDEO'               // in the notes and the MoM, whole word only
+  word: 'CEO', to: 'CDEO',              // in the notes and the MoM, whole word only
+  // What the MoM says now. Needed when the sheet has already been corrected,
+  // since the old name and post can then only come from here.
+  oldName: 'Shiv lal dhakad', oldPost: 'Chief Block Education Officer/BEO'
 };
 function MTG_fix_preview() { return mtgFix_(MTG_FIX, false); }
 function MTG_fix_apply()   { return mtgFix_(MTG_FIX, true); }
@@ -7402,7 +7405,7 @@ function mtgFix_(cfg, apply) {
   var out = [(apply ? 'CHANGED' : 'WOULD CHANGE') + ' in meeting ' + cfg.id + ':'];
   var wordRe = new RegExp('\\b' + cfg.word + '\\b', 'g');
   function esc(s) { return s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'); }
-  var writes = [], oldName = '', oldPost = '', momUrl = '', owner = '', district = '', found = 0;
+  var writes = [], oldName = cfg.oldName || '', oldPost = cfg.oldPost || '', momUrl = '', owner = '', district = '', found = 0;
   [MEETINGS_SHEET, CONDUCTED_SHEET].forEach(function(tab) {
     var ws = ss.getSheetByName(tab);
     if (!ws) return;
@@ -7411,8 +7414,8 @@ function mtgFix_(cfg, apply) {
       if ((rows[i][0] || '').toString().trim() !== cfg.id) continue;
       found++;
       var r = rows[i];
-      if (r[9]) oldName = r[9].toString().trim();
-      if (r[10]) oldPost = r[10].toString().trim();
+      if (r[9] && !cfg.oldName) oldName = r[9].toString().trim();
+      if (r[10] && !cfg.oldPost) oldPost = r[10].toString().trim();
       owner = (r[4] || '').toString().trim().toLowerCase(); district = (r[1] || '').toString().trim();
       if (tab === CONDUCTED_SHEET) momUrl = (r[17] || '').toString().trim();
       var block = (tab === MEETINGS_SHEET ? r[COL_PLAN_SKBLOCK - 1] : r[COL_CON_SKBLOCK - 1]) || '';
@@ -7436,7 +7439,8 @@ function mtgFix_(cfg, apply) {
   if (!found) { Logger.log('Meeting ' + cfg.id + ' not found.'); return 0; }
 
   // The MoM document: the file name, the official's line, the follow-up table, the notes
-  var docId = (/\/d\/([-\w]{20,})/.exec(momUrl) || [])[1], docChanges = 0;
+  // Saved as docs.google.com/open?id=... or .../document/d/.../edit
+  var docId = (/(?:\/d\/|[?&]id=)([-\w]{20,})/.exec(momUrl) || [])[1], docChanges = 0;
   if (docId) {
     try {
       var doc = DocumentApp.openById(docId), body = doc.getBody(), text = body.getText();

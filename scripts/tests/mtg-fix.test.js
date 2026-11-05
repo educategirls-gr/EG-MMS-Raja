@@ -61,5 +61,15 @@ ok('another meeting of that day is untouched', other[9] === 'CEO Zilla Parishad'
 writes.length = 0; replaceCalls = 0;
 ok('second run: nothing left', ctx.MTG_fix_apply() === 0 && writes.length === 0 && replaceCalls === 0);
 
+// the sheet corrected first, the MoM saved as open?id= (as the live ones are)
+con[17] = 'https://docs.google.com/open?id=1K58bIzds5Tp8I3myL2AMCLPzYjJ286AyxCz04_en_Fo';
+docText = 'MINUTES OF MEETING\n' + NAME + '   |   ' + POST + '\nDiscussed: briefed the CEO on the programme.\n';
+docName = 'MoM | ' + ID + ' | ' + NAME + ' | 23 Oct 2026'; saved = 0; writes.length = 0;
+const n3 = ctx.MTG_fix_apply();
+ok('an open?id= link opens the MoM', docOpened === '1K58bIzds5Tp8I3myL2AMCLPzYjJ286AyxCz04_en_Fo', docOpened);
+ok('the old name comes from MTG_FIX once the sheet no longer has it',
+   docText.includes('-   |   District Education Officer\n') && !docText.includes(NAME) && docText.includes('briefed the CDEO'), docText);
+ok('MoM file name corrected too, nothing written to the sheet', docName.includes('District Education Officer') && !docName.includes(NAME) && writes.length === 0 && saved === 1, docName);
+
 console.log('\n' + (fails ? fails + ' FAILED' : 'all checks pass'));
 process.exit(fails ? 1 : 0);
