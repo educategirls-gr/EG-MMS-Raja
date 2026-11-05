@@ -7383,6 +7383,102 @@ function empFixNames_(apply) {
   return changes.length;
 }
 
+// ── Correcting a meeting already held (editor helpers, 5 Nov 2026) ───────
+// The app edits only meetings not yet held, because a held one has its MoM.
+// When the team asks for a held meeting to be corrected, set MTG_FIX and run
+// MTG_fix_preview(), which changes nothing and logs what it finds, then
+// MTG_fix_apply(). It covers the Plan and Conducted rows and the MoM document,
+// and a second run finds nothing left to do.
+var MTG_FIX = {
+  id:   'MTG-20261023-143932',
+  name: '',                             // Stakeholder Name; '' removes it
+  post: 'District Education Officer',   // Stakeholder Post
+  word: 'CEO', to: 'CDEO'               // in the notes and the MoM, whole word only
+};
+function MTG_fix_preview() { return mtgFix_(MTG_FIX, false); }
+function MTG_fix_apply()   { return mtgFix_(MTG_FIX, true); }
+function mtgFix_(cfg, apply) {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), NLc = String.fromCharCode(10);
+  var out = [(apply ? 'CHANGED' : 'WOULD CHANGE') + ' in meeting ' + cfg.id + ':'];
+  var wordRe = new RegExp('\\b' + cfg.word + '\\b', 'g');
+  function esc(s) { return s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'); }
+  var writes = [], oldName = '', oldPost = '', momUrl = '', owner = '', district = '', found = 0;
+  [MEETINGS_SHEET, CONDUCTED_SHEET].forEach(function(tab) {
+    var ws = ss.getSheetByName(tab);
+    if (!ws) return;
+    var rows = ws.getDataRange().getValues(), head = rows[0] || [];
+    for (var i = 1; i < rows.length; i++) {
+      if ((rows[i][0] || '').toString().trim() !== cfg.id) continue;
+      found++;
+      var r = rows[i];
+      if (r[9]) oldName = r[9].toString().trim();
+      if (r[10]) oldPost = r[10].toString().trim();
+      owner = (r[4] || '').toString().trim().toLowerCase(); district = (r[1] || '').toString().trim();
+      if (tab === CONDUCTED_SHEET) momUrl = (r[17] || '').toString().trim();
+      var block = (tab === MEETINGS_SHEET ? r[COL_PLAN_SKBLOCK - 1] : r[COL_CON_SKBLOCK - 1]) || '';
+      if (block) out.push('   ' + tab + ': Stakeholder Block is "' + block + '" (left as it is)');
+      var set = function(c, val, label) {
+        writes.push({ ws: ws, r: i + 1, c: c + 1, v: val });
+        out.push('   ' + tab + ' row ' + (i + 1) + ' ' + label + ': "' + r[c] + '" -> "' + val + '"');
+      };
+      if ((r[9] || '').toString().trim() !== cfg.name) set(9, cfg.name, 'Stakeholder Name');
+      if ((r[10] || '').toString().trim() !== cfg.post) set(10, cfg.post, 'Stakeholder Post');
+      for (var c = 1; c < r.length; c++) {
+        if (c === 9 || c === 10 || typeof r[c] !== 'string' || !r[c]) continue;
+        var label = (head[c] || ('column ' + (c + 1))).toString();
+        if (r[c].search(wordRe) >= 0) set(c, r[c].replace(wordRe, cfg.to), label);
+        else if (/CBEO/.test(r[c])) out.push('   ' + tab + ' row ' + (i + 1) + ' ' + label + ' mentions CBEO (left as it is): "' + r[c].substring(0, 200) + '"');
+        wordRe.lastIndex = 0;
+        if (oldName && r[c].indexOf(oldName) >= 0) out.push('   ' + tab + ' row ' + (i + 1) + ' ' + label + ' still names ' + oldName + ' (left as it is)');
+      }
+    }
+  });
+  if (!found) { Logger.log('Meeting ' + cfg.id + ' not found.'); return 0; }
+
+  // The MoM document: the file name, the official's line, the follow-up table, the notes
+  var docId = (/\/d\/([-\w]{20,})/.exec(momUrl) || [])[1], docChanges = 0;
+  if (docId) {
+    try {
+      var doc = DocumentApp.openById(docId), body = doc.getBody(), text = body.getText();
+      var newLine = (cfg.name || '-') + '   |   ' + cfg.post;
+      var oldLine = (oldName || '-') + '   |   ' + oldPost;
+      var oldWith = oldName + '   (' + oldPost + ')', newWith = cfg.name ? cfg.name + '   (' + cfg.post + ')' : cfg.post;
+      var words = (text.match(wordRe) || []).length;
+      var title = doc.getName(), newTitle = oldName ? title.replace(oldName, cfg.name || cfg.post) : title;
+      if (oldLine !== newLine && text.indexOf(oldLine) >= 0) {
+        out.push('   MoM: "' + oldLine + '" -> "' + newLine + '"'); docChanges++;
+        if (apply) body.replaceText(esc(oldLine), newLine);
+      }
+      if (oldName && text.indexOf(oldWith) >= 0) {
+        out.push('   MoM follow-up: "' + oldWith + '" -> "' + newWith + '"'); docChanges++;
+        if (apply) body.replaceText(esc(oldWith), newWith);
+      }
+      if (words) {
+        out.push('   MoM: ' + words + ' x ' + cfg.word + ' -> ' + cfg.to); docChanges++;
+        if (apply) body.replaceText('\\b' + cfg.word + '\\b', cfg.to);
+      }
+      if (newTitle !== title) {
+        out.push('   MoM file name: "' + title + '" -> "' + newTitle + '"'); docChanges++;
+        if (apply) doc.setName(newTitle);
+      }
+      if (apply && docChanges) doc.saveAndClose();
+    } catch (de) { out.push('   MoM could not be opened: ' + de.message); }
+  } else {
+    out.push('   No MoM document on this meeting.');
+  }
+
+  if (apply) {
+    writes.forEach(function(w) { w.ws.getRange(w.r, w.c).setValue(w.v); });
+    SpreadsheetApp.flush();
+    try { invalidateUser(owner, district); CACHE_clearAll(); } catch (ce) {}
+  } else {
+    out.push(''); out.push('Nothing was written. Run MTG_fix_apply() to make these changes.');
+  }
+  if (!writes.length && !docChanges) out.push('   Nothing left to change.');
+  Logger.log(out.join(NLc));
+  return writes.length + docChanges;
+}
+
 function EMP_mirrorStatus() {
   var all = PropertiesService.getScriptProperties().getProperties();
   var m = empMirrorRead_();
