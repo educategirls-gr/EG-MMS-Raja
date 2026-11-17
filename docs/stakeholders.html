@@ -392,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     <span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.18 &middot; 17 Nov 2026</span>
+    <br><span style="opacity:.7;">Version 1.19 &middot; 17 Nov 2026</span>
   </div>
 </div>
 
@@ -651,7 +651,7 @@
 
     </div>
 
-    <div class="mob-version"><span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Version 1.18 &middot; 17 Nov 2026</div>
+    <div class="mob-version"><span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Version 1.19 &middot; 17 Nov 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -2360,7 +2360,8 @@
       } catch (e) { return null; }
     }
     var ME = signedIn();
-    if (!ME) return;
+    // State and District leads only (17 Nov 2026); the server says the same.
+    if (!ME || ['State', 'District', 'Zone'].indexOf(ME.role) < 0) return;
 
     var $ = function (id) { return document.getElementById(id); };
     var fab = $('cb-fab'), panel = $('cb-panel'), body = $('cb-body'), input = $('cb-in'), sendBtn = $('cb-send');
@@ -2375,10 +2376,8 @@
     } catch (e) {}
     function save() { try { sessionStorage.setItem(STORE, JSON.stringify({ token: ME.token, msgs: msgs.slice(-KEEP) })); } catch (e) {} }
 
-    var lead = ME.role === 'Field'
-      ? ['Meri pichhli meetings me kya hua?', 'Mere kaun se plan abhi pending hain?', 'Kis adhikari ne kya waada kiya?']
-      : ['Is mahine kis jile me sabse kam meetings hui?', 'Which offices have not been met for over 60 days?',
-         'BSA ke saath kya waade hue hain?', 'Pichhle mahine ki meetings ka saar batao'];
+    var lead = ['Is mahine kis jile me sabse kam meetings hui?', 'Which offices have not been met for over 60 days?',
+                'CBEO ke saath kya waade hue hain?', 'Pichhle mahine ki meetings ka saar batao'];
 
     function fmt(t) {
       var lines = esc(t || '').split('\n'), out = '', list = false;

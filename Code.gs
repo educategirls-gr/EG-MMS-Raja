@@ -4938,7 +4938,19 @@ function askRank_(question, lines) {
   return lines.slice().sort(function(a, b){ return (b.score - a.score) || (b.ts - a.ts); });
 }
 
+// Who may ask (17 Nov 2026, Alok): State and District leads (and a Zone lead,
+// where there are zones). A block officer's chatbot answered from their own
+// meetings only, which My Meetings already lists, and every question spends
+// the free AI allowance that tagging, escalations and the monthly report also
+// live on. The role is read from Employee_DB, so a change there counts at once.
+var ASK_ROLES = { State: 1, District: 1, Zone: 1 };
+function askAllowed_(session) {
+  var me = getEmployeeByEmail((session && session.email || '').toString().trim().toLowerCase());
+  var role = ((me && me.role) || (session && session.role) || '').toString();
+  return !!ASK_ROLES[role];
+}
 function askMeetings(session, question, history) {
+  if (!askAllowed_(session)) return { success:false, message:'FORBIDDEN' };
   question = askOneLine_(question).substring(0, 1000);
   if (question.length < 3) return { success:false, message:'Please type a question.' };
 
