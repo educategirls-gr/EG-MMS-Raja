@@ -6914,6 +6914,11 @@ function getAllReports(email) {
 // lead, everything for State. Their own meetings filed elsewhere (a State-
 // level district such as JAIPUR) count too. The open portal, report.html on
 // its own, is unchanged and still shows everything.
+// 17 Nov 2026, Alok: a block officer (Field) sees their own block(s) only, the
+// same rule as Block Meetings: the official sits in one of their blocks
+// (Stakeholder Block) or the officer who holds it works there, plus their own
+// meetings wherever filed. A Field row with no block keeps the district view.
+// District leads still see every block of their districts, State everything.
 var VIEW_SCOPED_ACTIONS = { getDashboardStats: 1, getReportData: 1, getEmployeeMaster: 1 };
 function viewScope_(session) {
   var role = (session && session.role || '').toString();
@@ -6926,12 +6931,29 @@ function viewScope_(session) {
     var k = normDist_(d);
     if (k && !set[k]) { set[k] = 1; names.push(d.toString().trim()); }
   });
-  return { districts: set, names: names, email: (session.email || '').toString().trim().toLowerCase() };
+  var email = (session.email || '').toString().trim().toLowerCase(), blocks = null, blockNames = [];
+  if (role === 'Field') {
+    // The sheet, not the sign-in: a block changed in Employee_DB counts at once.
+    var me = getEmployeeByEmail(email) || session;
+    var bs = blockSet_(me.block || session.block);
+    if (Object.keys(bs).length) { blocks = bs; blockNames = Object.keys(bs); }
+  }
+  return { districts: set, names: names, email: email, blocks: blocks, blockNames: blockNames };
 }
-function inViewScope_(scope, district, email) {
+// skBlock: the official's block. offBlock: the block(s) of the officer who
+// holds the meeting, as Employee_DB has them (comma list).
+function inBlockScope_(scope, skBlock, offBlock) {
+  if (!scope || !scope.blocks) return true;
+  if (scope.blocks[blockKey_(skBlock)]) return true;
+  var ob = blockSet_(offBlock);
+  for (var k in ob) if (scope.blocks[k]) return true;
+  return false;
+}
+function inViewScope_(scope, district, email, skBlock, offBlock) {
   if (!scope) return true;
-  if (scope.districts[normDist_(district)]) return true;
-  return !!email && email.toString().trim().toLowerCase() === scope.email;
+  if (email && email.toString().trim().toLowerCase() === scope.email) return true;   // their own, wherever filed
+  if (!scope.districts[normDist_(district)]) return false;
+  return inBlockScope_(scope, skBlock, offBlock);
 }
 // The portal's meeting list carries no email, so the person's own meetings
 // are found by id in the plan and conducted rows.
@@ -6950,17 +6972,22 @@ function scopeReportData_(full, scope) {
   var own = ownMeetingIds_(scope.email), out = {};
   for (var k in full) out[k] = full[k];
   out.meetings = (full.meetings || []).filter(function(m) {
-    return scope.districts[normDist_(m.district)] || own[(m.meetingId || '').toString().trim()];
+    if (own[(m.meetingId || '').toString().trim()]) return true;
+    return !!scope.districts[normDist_(m.district)] && inBlockScope_(scope, m.stakeholderBlock, m.block);
   });
   out.scope = scope.names;
+  if (scope.blocks) out.scopeBlocks = scope.blockNames;
   return out;
 }
 function scopeEmployees_(full, scope) {
   if (!full || full.success === false || !scope) return full;
   var out = {};
   for (var k in full) out[k] = full[k];
-  out.employees = (full.employees || []).filter(function(e) { return scope.districts[normDist_(e.district)]; });
+  out.employees = (full.employees || []).filter(function(e) {
+    return !!scope.districts[normDist_(e.district)] && inBlockScope_(scope, '', e.block);
+  });
   out.scope = scope.names;
+  if (scope.blocks) out.scopeBlocks = scope.blockNames;
   return out;
 }
 
@@ -6979,8 +7006,10 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
     // activeDistrict (from the switcher) overrides the user's primary when filtering
     var userDistrict = (activeDistrict || (emp ? emp.district : '') || '').toString();
     var isState      = !scope && (allDistricts || (userRole === 'State'));
-    function keepRow(dist, rowEmail) {
-      if (scope) return inViewScope_(scope, dist, rowEmail);
+    var offBlocks = (scope && scope.blocks) ? officerBlockMap_() : null;   // email -> officer's block(s)
+    function keepRow(dist, rowEmail, skBlock) {
+      if (scope) return inViewScope_(scope, dist, rowEmail, skBlock,
+                                     offBlocks ? offBlocks[(rowEmail || '').toString().trim().toLowerCase()] : '');
       return isState || normDist_(dist) === normDist_(userDistrict);
     }
 
@@ -7003,7 +7032,7 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
       var purp   = (row[11] || '').toString().trim();
       var dateV  = row[5];
 
-      if (!keepRow(dist, row[4])) continue;
+      if (!keepRow(dist, row[4], row[COL_PLAN_SKBLOCK - 1])) continue;
       if (testE[(row[4] || '').toString().trim().toLowerCase()]) continue;
 
       var offD = officialDistrict_(dist);   // old and official spelling count as one
@@ -7083,7 +7112,7 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
       for (var ci = 1; ci < cd.length; ci++) {
         var cr      = cd[ci];
         var cdist   = (cr[1]||'').toString().trim();
-        if (!keepRow(cdist, cr[4])) continue;
+        if (!keepRow(cdist, cr[4], cr[COL_CON_SKBLOCK - 1])) continue;
         if (testE[(cr[4] || '').toString().trim().toLowerCase()]) continue;
         var cEmp    = (cr[2] ||'').toString().trim();
         var cType   = meetingTypeOf_(cr[8]);
@@ -7099,7 +7128,7 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
         var rr    = cd[ri];
         if (!(rr[0] || '').toString().trim()) continue;   // trailing blank rows are not meetings
         var rdist = (rr[1]||'').toString().trim();
-        if (!keepRow(rdist, rr[4])) continue;
+        if (!keepRow(rdist, rr[4], rr[COL_CON_SKBLOCK - 1])) continue;
         if (testE[(rr[4] || '').toString().trim().toLowerCase()]) continue;
         recent.push({
           meetingId:       (rr[0] ||'').toString(),
@@ -7140,7 +7169,7 @@ function getDashboardStats(email, allDistricts, activeDistrict, scope) {
       topStakeholderPost:  topStkPost,
       topStakeholderCount: topStkCount
     };
-    if (scope) { statsResult.scope = scope.names; return statsResult; }
+    if (scope) { statsResult.scope = scope.names; if (scope.blocks) statsResult.scopeBlocks = scope.blockNames; return statsResult; }
     cPut(statKey, statsResult, C_TTL_LIVE);
     return statsResult;
   } catch(err) {

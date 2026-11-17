@@ -392,7 +392,7 @@
   </div>
   <div class="sidebar-footer">
     <span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Powered by Google Workspace
-    <br><span style="opacity:.7;">Version 1.17 &middot; 13 Oct 2026</span>
+    <br><span style="opacity:.7;">Version 1.18 &middot; 17 Nov 2026</span>
   </div>
 </div>
 
@@ -651,7 +651,7 @@
 
     </div>
 
-    <div class="mob-version"><span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Version 1.17 &middot; 13 Oct 2026</div>
+    <div class="mob-version"><span class="app-short">GEMS</span> – <span class="app-name">Government Engagement Management System</span>, <span class="state-name"></span><br>Version 1.18 &middot; 17 Nov 2026</div>
 
   </div><!-- /content-area -->
 </div><!-- /main-content -->
@@ -688,7 +688,7 @@
   function dsOne(id)   { var p = dsGet(id); return p.length === 1 ? p[0] : ''; }
   function dsLabel(id) {
     var p = dsGet(id);
-    return p.length === 0 ? (SCOPED ? 'My Districts' : 'All Districts') : (p.length === 1 ? p[0] : p.length + ' districts');
+    return p.length === 0 ? (SCOPED ? MY_SCOPE : 'All Districts') : (p.length === 1 ? p[0] : p.length + ' districts');
   }
   function dsRender(id, values, onChange) {
     var box = document.getElementById(id);
@@ -822,6 +822,11 @@
     try { VIEW_SESSION = JSON.parse(localStorage.getItem('eg_grm_session') || sessionStorage.getItem('eg_grm_session') || 'null'); } catch(e) {}
   }
   var SCOPED = !!(VIEW_SESSION && VIEW_SESSION.token && VIEW_SESSION.role !== 'State');
+  // A block officer sees their own block(s) only (17 Nov 2026), a District
+  // lead every block of their districts.
+  var SCOPE_BLOCKS = (SCOPED && VIEW_SESSION.role === 'Field')
+    ? String(VIEW_SESSION.block || '').split(',').map(function(b) { return b.trim(); }).filter(Boolean) : [];
+  var MY_SCOPE = SCOPE_BLOCKS.length ? (SCOPE_BLOCKS.length > 1 ? 'My Blocks' : 'My Block') : 'My Districts';
   function withTok(url) {
     var t = SCOPED ? VIEW_SESSION.token : TOKEN;
     if (t) url += (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(t);
@@ -924,7 +929,7 @@
 
     // ─ KPI Row 1 ─
     var kpis = [
-      { n: t.total||0,     l:'Total Planned',  c:'#1D4ED8', chip:(SCOPED ? 'My Districts' : 'All Districts'), chipC:'#1E40AF', chipBg:'#DBEAFE' },
+      { n: t.total||0,     l:'Total Planned',  c:'#1D4ED8', chip:(SCOPED ? MY_SCOPE : 'All Districts'), chipC:'#1E40AF', chipBg:'#DBEAFE' },
       { n: t.conducted||0, l:'Conducted',       c:'#065F46', chip:'Completed',        chipC:'#065F46', chipBg:'#A7F3D0' },
       { n: pending,        l:'Pending',         c:'#92400E', chip:'Planned + Delayed', chipC:'#92400E', chipBg:'#FDE68A' },
       { n: t.cancelled||0, l:'Cancelled',       c:'#991B1B', chip:'Need Follow-up',   chipC:'#991B1B', chipBg:'#FECACA' }
@@ -2307,8 +2312,8 @@
     var el = document.getElementById('scope-note');
     if (!el || !SCOPED) return;
     var ds = (VIEW_SESSION.districts && VIEW_SESSION.districts.length) ? VIEW_SESSION.districts : [VIEW_SESSION.district];
-    el.textContent = '📍 ' + ds.filter(Boolean).join(', ');
-    el.title = 'Showing your districts only';
+    el.textContent = '📍 ' + (SCOPE_BLOCKS.length ? SCOPE_BLOCKS.join(', ') + ' (' + ds.filter(Boolean).join(', ') + ')' : ds.filter(Boolean).join(', '));
+    el.title = SCOPE_BLOCKS.length ? 'Showing your block only' : 'Showing your districts only';
     el.style.display = 'inline-block';
   })();
 

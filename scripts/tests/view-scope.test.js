@@ -78,7 +78,7 @@ const rD = get({ action: 'getReportData', scoped: '1', token: 'tD' });
 ok('District lead: own district, additional districts, own state-level meeting; not PALI, not State\'s',
    JSON.stringify(ids(rD)) === JSON.stringify(['M-BARAN', 'M-JAIPUR-D', 'M-UDAIPUR']), JSON.stringify(ids(rD)));
 ok('District lead: told which districts', JSON.stringify(rD.scope) === JSON.stringify(['UDAIPUR', 'BARAN', 'JHALAWAR']), JSON.stringify(rD.scope));
-ok('PC in BARAN: the whole BARAN district, nothing else', JSON.stringify(ids(get({ action: 'getReportData', scoped: '1', token: 'tF' }))) === JSON.stringify(['M-BARAN']));
+ok('PC in BARAN (block ATRU): nothing outside BARAN (block rule: block-scope.test.js)', JSON.stringify(ids(get({ action: 'getReportData', scoped: '1', token: 'tF' }))) === JSON.stringify(['M-BARAN']));
 ok('PC in PALI: PALI only', JSON.stringify(ids(get({ action: 'getReportData', scoped: '1', token: 'tF2' }))) === JSON.stringify(['M-PALI']));
 ok('State: the whole state', JSON.stringify(ids(get({ action: 'getReportData', scoped: '1', token: 'tS' }))) === JSON.stringify(all));
 const bad = get({ action: 'getReportData', scoped: '1', token: 'expired' });
