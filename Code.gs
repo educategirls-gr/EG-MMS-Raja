@@ -5592,7 +5592,7 @@ function ensureTagHeaders() {
   return 'headers set';
 }
 
-function taggingJob() { return tagUntaggedMeetings(12); }   // small batch: sleeps + retries must fit in 6 min
+function taggingJob() { try { mtgDeletePending_(); } catch (e) {} return tagUntaggedMeetings(12); }   // small batch: sleeps + retries must fit in 6 min
 function installTaggingTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction()==='taggingJob') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('taggingJob').timeBased().everyHours(1).create();
@@ -5914,7 +5914,7 @@ function sendEscalations(mode, limit) {
   return { success:true, mode:mode, sent:done, details:out };
 }
 
-function escalationJob() { return sendEscalations('live', 40); }
+function escalationJob() { try { mtgDeletePending_(); } catch (e) {} return sendEscalations('live', 40); }
 function installEscalationTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction()==='escalationJob') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('escalationJob').timeBased().everyHours(1).create();
@@ -6039,6 +6039,7 @@ function calendarJob() {
   // Keeps the sign-in copy of the employee master current, so a Sheets outage
   // can never stop anyone logging in. Wrapped, because refreshing the copy is
   // not worth failing the calendar sync over.
+  try { mtgDeletePending_(); } catch (e) {}   // a held meeting the team asked to remove
   try { EMP_refreshMirror(); } catch (e) {}
   try { PURPOSE_refresh(); }   catch (e) {}
   try { POST_refresh(); }      catch (e) {}
@@ -7422,6 +7423,128 @@ function empFixNames_(apply) {
   }
   Logger.log(out.join(NLc));
   return changes.length;
+}
+
+// ── Removing a held meeting altogether (21 Nov 2026) ─────────────────────
+// The app deletes only meetings not yet held. When the team asks for a held
+// one to go (an orientation meeting made while learning the app, say), its id
+// goes in MTG_DELETE and the code is pushed. The hourly jobs run as the owner
+// and remove it on their next run, so nobody has to run anything in the
+// editor. Every row is copied to the Deleted Meetings tab first (with the
+// whole row as JSON), follow-ups planned from it go too, its MoM document and
+// Drive folder go to the Drive trash (recoverable for 30 days), the calendar
+// event is taken down and the caches are cleared. Each id is done once
+// (Script Property MTG_DELETED). MTG_delete_preview() shows what would go.
+var MTG_DELETE = [
+  { id: 'MTG-20261116-113044', why: 'Orientation meeting; Rajat Sharma asked for it to be deleted (21 Nov 2026)' }
+];
+function MTG_delete_preview() {
+  return MTG_DELETE.map(function(c) { var r = mtgDelete_(c, false); Logger.log(r.log); return r; });
+}
+function mtgDeletePending_() {
+  if (!MTG_DELETE.length) return 0;
+  var props = PropertiesService.getScriptProperties(), done = {}, n = 0;
+  try { done = JSON.parse(props.getProperty('MTG_DELETED') || '{}') || {}; } catch (e) { done = {}; }
+  MTG_DELETE.forEach(function(c) {
+    var id = (c && c.id || '').toString().trim();
+    if (!id || done[id]) return;
+    var res = withScriptLock_(function() { return mtgDelete_(c, true); });
+    if (!res || res.error) return;   // tried again on the next run
+    done[id] = { at: new Date().toISOString(), rows: res.rows, files: res.files, log: (res.log || '').substring(0, 1500) };
+    n++;
+  });
+  if (n) props.setProperty('MTG_DELETED', JSON.stringify(done));
+  return n;
+}
+function mtgDelete_(cfg, apply) {
+  var NLc = String.fromCharCode(10), id = (cfg && cfg.id || '').toString().trim();
+  var out = [(apply ? 'DELETED' : 'WOULD DELETE') + ' meeting ' + id + (cfg && cfg.why ? ' (' + cfg.why + ')' : '') + ':'];
+  if (!id) return { rows: 0, files: 0, log: 'No meeting id.' };
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var plan = ss.getSheetByName(MEETINGS_SHEET), pv = plan ? plan.getDataRange().getValues() : [];
+    // the meeting, and every follow-up planned from it (Plan Meetings column U holds the parent's id)
+    var ids = {}; ids[id] = 1;
+    for (var round = 0; round < 3; round++) {
+      for (var p = 1; p < pv.length; p++) {
+        var pid = (pv[p][0] || '').toString().trim(), parent = (pv[p][20] || '').toString().trim();
+        if (pid && parent && ids[parent] && !ids[pid]) { ids[pid] = 1; out.push('   follow-up ' + pid + ' was planned from ' + parent + ', it goes too'); }
+      }
+    }
+    var docRe = /(?:\/d\/|[?&]id=)([-\w]{20,})/, folderRe = /folders\/([-\w]{20,})/;
+    var hits = [], events = [], files = {}, owners = {}, places = {};
+    [MEETINGS_SHEET, CONDUCTED_SHEET, POSTPONED_SHEET, CANCELLED_SHEET].forEach(function(tab) {
+      var ws = ss.getSheetByName(tab);
+      if (!ws) return;
+      var rows = (tab === MEETINGS_SHEET) ? pv : ws.getDataRange().getValues();
+      for (var i = rows.length - 1; i >= 1; i--) {   // bottom up, so the row numbers hold while deleting
+        var r = rows[i], rid = (r[0] || '').toString().trim();
+        if (!ids[rid]) continue;
+        var main = (tab === MEETINGS_SHEET || tab === CONDUCTED_SHEET);
+        var status = tab === CONDUCTED_SHEET ? 'Conducted' : tab === MEETINGS_SHEET ? (r[13] || 'Planned').toString() : tab;
+        var email = ((main ? r[4] : tab === POSTPONED_SHEET ? r[3] : r[4]) || '').toString().trim().toLowerCase();
+        hits.push({ ws: ws, tab: tab, row: i + 1, r: r, status: status, main: main, email: email });
+        out.push('   ' + tab + ' row ' + (i + 1) + ': ' + rid + ' | ' + (main ? fmtDateVal(r[5]) : '') + ' | ' + (r[2] || '') +
+                 (main ? ' | ' + (r[9] || '') + ' (' + (r[10] || '') + ')' : '') + ' | ' + status);
+        if (email) { owners[email] = 1; places[email] = (r[1] || '').toString().trim(); }
+        if (tab === MEETINGS_SHEET && r[COL_CAL_EVENT - 1]) events.push(r[COL_CAL_EVENT - 1]);
+        if (tab === CONDUCTED_SHEET) {
+          var mom = docRe.exec((r[17] || '').toString()); if (mom) files[mom[1]] = 'MoM document';
+          ((r[21] || '').toString().split(/\s*,\s*/)).forEach(function(u) { var g = docRe.exec(u); if (g) files[g[1]] = 'Govt MoM PDF'; });
+        }
+      }
+    });
+    if (!hits.length) { out.push('   Not found in any meeting tab (already deleted?).'); return { rows: 0, files: 0, log: out.join(NLc) }; }
+
+    // the meeting's own Drive folder: root / district / meeting id (photos, MoM, Govt MoM)
+    var folders = [];
+    try {
+      var root = getRootMeetingsFolder(), seenD = {};
+      hits.forEach(function(h) {
+        var d = (h.r[1] || '').toString().trim() || 'General', rid = (h.r[0] || '').toString().trim();
+        if (seenD[d + '|' + rid]) return; seenD[d + '|' + rid] = 1;
+        var di = root.getFoldersByName(d);
+        while (di.hasNext()) { var fi = di.next().getFoldersByName(rid); while (fi.hasNext()) folders.push(fi.next()); }
+      });
+    } catch (fe) { out.push('   Drive folder could not be looked up: ' + fe.message); }
+    Object.keys(files).forEach(function(fid) { out.push('   ' + files[fid] + ' ' + fid + ' -> Drive trash'); });
+    folders.forEach(function(f) { out.push('   Drive folder "' + f.getName() + '" -> Drive trash'); });
+    if (events.length) out.push('   calendar event taken down');
+
+    if (!apply) {
+      out.push(''); out.push('Nothing was changed.');
+      return { rows: hits.length, files: Object.keys(files).length + folders.length, log: out.join(NLc) };
+    }
+
+    // 1. keep a copy of every row
+    var del = ss.getSheetByName(DELETED_SHEET);
+    if (!del) {
+      del = ss.insertSheet(DELETED_SHEET);
+      del.appendRow(['Meeting ID','District','Employee Name','Email','Meeting Date','Meeting Time','Meeting Type',
+                     'Stakeholder Name','Stakeholder Post','Meeting Purpose','Status','Deleted By','Deleted At']);
+    }
+    if (!(del.getRange(1, 14).getValue() || '').toString()) del.getRange(1, 14).setValue('Source Tab');
+    if (!(del.getRange(1, 15).getValue() || '').toString()) del.getRange(1, 15).setValue('Full Row (JSON)');
+    var by = 'Admin: ' + ((cfg.why || 'held meeting removed').toString()), at = new Date().toLocaleString('en-IN');
+    hits.forEach(function(h) {
+      var r = h.r;
+      del.appendRow(h.main
+        ? [r[0], r[1], r[2], r[4], fmtDateVal(r[5]), fmtTimeVal(r[6]), r[8], r[9], r[10], r[11], h.status, by, at, h.tab, JSON.stringify(r)]
+        : [r[0], r[1], r[2], h.email, '', '', '', '', '', '', h.status, by, at, h.tab, JSON.stringify(r)]);
+    });
+    // 2. the rows themselves (collected bottom up per tab)
+    hits.forEach(function(h) { h.ws.deleteRow(h.row); });
+    // 3. Drive (trash, not gone) and the calendar
+    var nFiles = 0;
+    Object.keys(files).forEach(function(fid) { try { DriveApp.getFileById(fid).setTrashed(true); nFiles++; } catch (te) { out.push('   could not trash ' + fid + ': ' + te.message); } });
+    folders.forEach(function(f) { try { f.setTrashed(true); nFiles++; } catch (te) { out.push('   could not trash folder: ' + te.message); } });
+    events.forEach(function(ev) { calEventDrop_(ev); });
+    try { SpreadsheetApp.flush(); } catch (fl) {}
+    try { Object.keys(owners).forEach(function(em) { invalidateUser(em, places[em]); }); CACHE_clearAll(); } catch (ce) {}
+    return { rows: hits.length, files: nFiles, log: out.join(NLc) };
+  } catch (err) {
+    return { error: err.message, rows: 0, files: 0, log: out.join(NLc) + NLc + 'ERROR ' + err.message };
+  }
 }
 
 // ── Correcting a meeting already held (editor helpers, 5 Nov 2026) ───────
