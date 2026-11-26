@@ -1,7 +1,8 @@
-// Adding staff without the editor (26 Nov 2026): a person in EMP_ADD is
+// Adding staff without the editor (26 Nov 2026): everyone in EMP_ADD is
 // appended to Employee_DB by the hourly jobs, once, never twice, after which
-// the sign-in copy is refreshed and the caches cleared. REAL Code.gs, the
-// sheet faked.
+// the sign-in copy is refreshed and the caches cleared. Every queued person is
+// checked against the official district/block list first, so a misspelt block
+// fails here instead of landing in the sheet. REAL Code.gs, the sheet faked.
 //   node scripts/tests/emp-add.test.js
 const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync('Code.gs', 'utf8');
@@ -11,6 +12,7 @@ const HEAD = ['District', 'Block', 'Name', 'Designation', 'Email', 'Role', 'Zone
 const rows = [HEAD,
   ['SIROHI', 'SIROHI', 'Sheetal Arya', 'Program Coordinator', 'sheetal.arya@educategirls.ngo', 'Field', '', ''],
   ['JALORE', 'JALORE', 'Sakshi Jain', 'District Operation Lead', 'sakshi.jain@educategirls.ngo', 'District', '', 'RAJSAMAND, JODHPUR, PALI, SIROHI']];
+const START = rows.length;
 const sheet = {
   getDataRange: () => ({ getValues: () => rows.map(r => r.slice()) }), getLastRow: () => rows.length,
   appendRow: (a) => rows.push(a.slice()) };
@@ -32,41 +34,59 @@ ctx.CACHE_clearAll = () => { cleared++; };
 
 let fails = 0;
 const ok = (label, cond, extra) => { console.log((cond ? 'ok   ' : 'FAIL ') + label + (cond ? '' : '   ' + (extra || ''))); if (!cond) fails++; };
-const B = 'bheraram.meghwal@educategirls.ngo';
+const Q = ctx.EMP_ADD, emailOf = (p) => (p.email || '').trim().toLowerCase();
+const ROLES = ['State', 'District', 'Field', 'Zone'];
 
-// the queued person, checked against the official lists
-const p = ctx.EMP_ADD[0];
-ok('one person queued: Bheraram Meghwal', ctx.EMP_ADD.length === 1 && p.name === 'Bheraram Meghwal' && p.email === B);
-ok('district is an official Rajasthan district', !!ctx.RJ_DISTRICT_BLOCKS[p.district]);
-ok('every block is an official block of that district (SHEOGANJ, PINDWARA)',
-   p.block.split(',').map(b => b.trim()).every(b => ctx.RJ_DISTRICT_BLOCKS[p.district].indexOf(b) !== -1), p.block);
-ok('role reads as Field', ctx.normalizeRole_(p.role) === 'Field');
-ok('email is on the allowed domain', p.email.split('@')[1] === ctx.ALLOWED_DOMAIN);
-ok('designation is one the sheet already uses', p.designation === rows[1][3]);
+// designations the team already uses (a new one is allowed, just reported)
+let knownDesig = [];
+try { knownDesig = JSON.parse(fs.readFileSync('docs/data/employees.json', 'utf8')).employees.map(e => (e.designation || '').trim()); } catch (e) {}
 
-// first run appends exactly one row, columns A-F
+// every queued person, checked against the official lists
+ok('the queue is not empty', Q.length > 0);
+Q.forEach(p => {
+  const who = (p.name || '?') + ': ';
+  const blocks = (p.block || '').split(',').map(b => b.trim()).filter(Boolean);
+  ok(who + 'name filled', !!(p.name || '').trim());
+  ok(who + 'district ' + p.district + ' is an official Rajasthan district', !!ctx.RJ_DISTRICT_BLOCKS[p.district]);
+  ok(who + 'blocks ' + p.block + ' are official blocks of ' + p.district,
+     p.role !== 'Field' && !blocks.length || blocks.length && ctx.RJ_DISTRICT_BLOCKS[p.district] &&
+     blocks.every(b => ctx.RJ_DISTRICT_BLOCKS[p.district].indexOf(b) !== -1), p.block);
+  ok(who + 'role ' + p.role + ' is one the app knows', ROLES.indexOf(ctx.normalizeRole_(p.role)) !== -1 && p.role === ctx.normalizeRole_(p.role));
+  ok(who + 'email ' + p.email + ' is on the allowed domain', /^[^@\s]+@[^@\s]+$/.test(p.email) && p.email.split('@')[1].toLowerCase() === ctx.ALLOWED_DOMAIN);
+  ok(who + 'designation filled', !!(p.designation || '').trim());
+  if (knownDesig.length && knownDesig.indexOf(p.designation) === -1) console.log('note ' + who + 'designation "' + p.designation + '" is new to the sheet');
+});
+ok('no email queued twice', new Set(Q.map(emailOf)).size === Q.length);
+
+// first run appends every queued person, columns A-F
 const n1 = ctx.empAddPending_();
-ok('first run adds one row', n1 === 1 && rows.length === 4, 'n=' + n1 + ' rows=' + rows.length);
-ok('row is District, Block, Name, Designation, Email, Role',
-   JSON.stringify(rows[3]) === JSON.stringify(['SIROHI', 'SHEOGANJ, PINDWARA', 'Bheraram Meghwal', 'Program Coordinator', B, 'Field']), JSON.stringify(rows[3]));
+ok('first run adds everyone queued', n1 === Q.length && rows.length === START + Q.length, 'n=' + n1 + ' rows=' + rows.length);
+Q.forEach((p, i) => ok('row for ' + p.name + ' is District, Block, Name, Designation, Email, Role',
+  JSON.stringify(rows[START + i]) === JSON.stringify([p.district, p.block, p.name, p.designation, p.email.trim(), p.role]), JSON.stringify(rows[START + i])));
 ok('sign-in copy refreshed and caches cleared', refreshed === 1 && cleared === 1);
 const done = JSON.parse(props.EMP_ADDED || '{}');
-ok('marked done with its row number', done[B] && done[B].row === 4, props.EMP_ADDED);
+ok('each marked done with its row number', Q.every((p, i) => done[emailOf(p)] && done[emailOf(p)].row === START + i + 1), props.EMP_ADDED);
 
-// the code reads the new row the way sign-in does
+// the code reads the new rows the way sign-in does
 const map = ctx.empReadFromSheet_();
-ok('sign-in sees him: Field, SIROHI, both blocks', map && map[B] && map[B].role === 'Field' && map[B].district === 'SIROHI' &&
-   map[B].block === 'SHEOGANJ, PINDWARA' && map[B].name === 'Bheraram Meghwal', JSON.stringify(map && map[B]));
+Q.forEach(p => { const e = map && map[emailOf(p)];
+  ok('sign-in sees ' + p.name, e && e.role === ctx.normalizeRole_(p.role) && e.district === p.district && e.block === p.block && e.name === p.name, JSON.stringify(e)); });
 
 // second run does nothing
 const n2 = ctx.empAddPending_();
-ok('second run adds nothing and touches nothing', n2 === 0 && rows.length === 4 && refreshed === 1 && cleared === 1);
+ok('second run adds nothing and touches nothing', n2 === 0 && rows.length === START + Q.length && refreshed === 1 && cleared === 1);
 
 // already in the sheet (say, added by hand) and not yet marked: never added twice
 delete props.EMP_ADDED;
 const n3 = ctx.empAddPending_();
-ok('an email already in the sheet is not added again', n3 === 0 && rows.length === 4);
-ok('...but is marked done', JSON.parse(props.EMP_ADDED)[B].already === true);
+ok('an email already in the sheet is not added again', n3 === 0 && rows.length === START + Q.length);
+ok('...but is marked done', Q.every(p => JSON.parse(props.EMP_ADDED)[emailOf(p)].already === true));
+
+// one new person queued later: only that one is added
+Q.push({ district: 'SIROHI', block: 'REODAR', name: 'Test Later', designation: 'Program Coordinator', email: 'test.later@educategirls.ngo', role: 'Field' });
+const n4 = ctx.empAddPending_();
+ok('a person queued later is added on the next run, alone', n4 === 1 && rows.length === START + Q.length && rows[rows.length - 1][2] === 'Test Later');
+Q.pop();
 
 // sheet missing: nothing marked, tried again next run
 delete props.EMP_ADDED;
