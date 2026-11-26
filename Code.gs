@@ -7280,6 +7280,23 @@ function EMP_refreshMirror() {
   return people;
 }
 
+// Editor helper: run this after adding or changing anyone in Employee_DB by
+// hand, and they can sign in straight away. EMP_refreshMirror alone is not
+// enough when the person tried to sign in before being added: the "not
+// registered" answer is cached for 30 minutes. This takes a fresh copy and
+// then clears every cache (that answer included). If the sheet will not
+// answer, nothing is cleared, so the answers already cached keep working.
+function EMP_refreshNow() {
+  var people = EMP_refreshMirror();
+  if (!people) {
+    Logger.log('Nothing cleared: the employee sheet did not answer. Run EMP_refreshNow again in a minute.');
+    return 0;
+  }
+  CACHE_clearAll();
+  Logger.log('Done: ' + people + ' people in the sign-in copy and every cache cleared. Anyone just added can sign in now.');
+  return people;
+}
+
 // ── Adding staff without the editor (26 Nov 2026) ─────────────────────────
 // The claude.ai Sheets connector cannot open this sheet, so when the team asks
 // for someone to be added, the person goes in EMP_ADD and the code is pushed.

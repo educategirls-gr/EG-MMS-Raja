@@ -95,6 +95,16 @@ ctx.SpreadsheetApp.openById = () => ({ getSheetByName: () => null });
 ok('sheet not found: nothing marked', ctx.empAddPending_() === 0 && !props.EMP_ADDED);
 ctx.SpreadsheetApp.openById = keep;
 
+// EMP_refreshNow: fresh copy first, then every cache; nothing cleared when the sheet does not answer
+const seq = [], keepRefresh = ctx.EMP_refreshMirror, keepClear = ctx.CACHE_clearAll;
+ctx.CACHE_clearAll = () => { seq.push('clear'); };
+ctx.EMP_refreshMirror = () => { seq.push('refresh'); return 42; };
+ok('EMP_refreshNow refreshes the copy, then clears the caches', ctx.EMP_refreshNow() === 42 && seq.join() === 'refresh,clear', seq.join());
+seq.length = 0;
+ctx.EMP_refreshMirror = () => { seq.push('refresh'); return 0; };
+ok('EMP_refreshNow clears nothing when the sheet does not answer', ctx.EMP_refreshNow() === 0 && seq.join() === 'refresh', seq.join());
+ctx.EMP_refreshMirror = keepRefresh; ctx.CACHE_clearAll = keepClear;
+
 // all three hourly jobs run it
 ['calendarJob', 'taggingJob', 'escalationJob'].forEach(j => {
   const body = src.slice(src.indexOf('function ' + j + '('), src.indexOf('function ' + j + '(') + 600);
