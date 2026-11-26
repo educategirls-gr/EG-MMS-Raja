@@ -7,3 +7,4 @@ build-pages.js
 scripts/**
 .github/**
 .claude/**
+_deck/**

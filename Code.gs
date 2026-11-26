@@ -5592,7 +5592,7 @@ function ensureTagHeaders() {
   return 'headers set';
 }
 
-function taggingJob() { try { mtgDeletePending_(); } catch (e) {} return tagUntaggedMeetings(12); }   // small batch: sleeps + retries must fit in 6 min
+function taggingJob() { try { mtgDeletePending_(); } catch (e) {} try { empAddPending_(); } catch (e) {} return tagUntaggedMeetings(12); }   // small batch: sleeps + retries must fit in 6 min
 function installTaggingTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction()==='taggingJob') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('taggingJob').timeBased().everyHours(1).create();
@@ -5914,7 +5914,7 @@ function sendEscalations(mode, limit) {
   return { success:true, mode:mode, sent:done, details:out };
 }
 
-function escalationJob() { try { mtgDeletePending_(); } catch (e) {} return sendEscalations('live', 40); }
+function escalationJob() { try { mtgDeletePending_(); } catch (e) {} try { empAddPending_(); } catch (e) {} return sendEscalations('live', 40); }
 function installEscalationTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction()==='escalationJob') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('escalationJob').timeBased().everyHours(1).create();
@@ -6040,6 +6040,7 @@ function calendarJob() {
   // can never stop anyone logging in. Wrapped, because refreshing the copy is
   // not worth failing the calendar sync over.
   try { mtgDeletePending_(); } catch (e) {}   // a held meeting the team asked to remove
+  try { empAddPending_(); }    catch (e) {}   // staff the team asked to add
   try { EMP_refreshMirror(); } catch (e) {}
   try { PURPOSE_refresh(); }   catch (e) {}
   try { POST_refresh(); }      catch (e) {}
@@ -7277,6 +7278,56 @@ function EMP_refreshMirror() {
   var chunks = empMirrorWrite_(map);
   Logger.log('Employee copy refreshed: ' + people + ' people, ' + chunks + ' chunk(s). Sign-in no longer needs the Sheet.');
   return people;
+}
+
+// ── Adding staff without the editor (26 Nov 2026) ─────────────────────────
+// The claude.ai Sheets connector cannot open this sheet, so when the team asks
+// for someone to be added, the person goes in EMP_ADD and the code is pushed.
+// The hourly jobs run as the owner and, on their next run, append the row to
+// Employee_DB (columns A-F), refresh the sign-in copy and clear the caches, so
+// a "not registered" answer cached from an earlier try is forgotten. Each
+// email is done once (Script Property EMP_ADDED), and an email already in the
+// sheet is never added a second time. EMP_add_now() does it from the editor.
+var EMP_ADD = [
+  { district: 'SIROHI', block: 'SHEOGANJ, PINDWARA', name: 'Bheraram Meghwal', designation: 'Program Coordinator',
+    email: 'bheraram.meghwal@educategirls.ngo', role: 'Field' }   // access request, 26 Nov 2026
+];
+function empAddPending_() {
+  if (!EMP_ADD.length) return 0;
+  var props = PropertiesService.getScriptProperties(), done = {};
+  try { done = JSON.parse(props.getProperty('EMP_ADDED') || '{}') || {}; } catch (e) { done = {}; }
+  var todo = EMP_ADD.filter(function(p) {
+    var em = (p && p.email || '').toString().trim().toLowerCase();
+    return em && !done[em];
+  });
+  if (!todo.length) return 0;
+  var added = withScriptLock_(function() {
+    var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(EMPLOYEE_SHEET);
+    if (!sheet) return null;
+    var have = {}, n = 0;
+    sheet.getDataRange().getValues().forEach(function(r, i) {
+      if (i) have[(r[4] || '').toString().trim().toLowerCase()] = 1;
+    });
+    todo.forEach(function(p) {
+      var email = p.email.toString().trim(), em = email.toLowerCase();
+      if (have[em]) { done[em] = { at: new Date().toISOString(), already: true }; return; }
+      sheet.appendRow([p.district, p.block, p.name, p.designation, email, p.role]);
+      have[em] = 1; n++;
+      done[em] = { at: new Date().toISOString(), row: sheet.getLastRow() };
+    });
+    return n;
+  });
+  if (added === null || added === undefined) return 0;   // tried again on the next run
+  props.setProperty('EMP_ADDED', JSON.stringify(done));
+  try { EMP_refreshMirror(); } catch (e) {}
+  try { CACHE_clearAll(); }    catch (e) {}
+  return added;
+}
+function EMP_add_now() {
+  var n = empAddPending_();
+  Logger.log(n + ' new row(s) added to ' + EMPLOYEE_SHEET + '. Done so far: ' +
+             (PropertiesService.getScriptProperties().getProperty('EMP_ADDED') || '{}'));
+  return n;
 }
 
 // Editor helper, read only: what the code sees for a person, straight from the
