@@ -7307,7 +7307,9 @@ function EMP_refreshNow() {
 // sheet is never added a second time. EMP_add_now() does it from the editor.
 var EMP_ADD = [
   { district: 'SIROHI', block: 'SHEOGANJ, PINDWARA', name: 'Bheraram Meghwal', designation: 'Program Coordinator',
-    email: 'bheraram.meghwal@educategirls.ngo', role: 'Field' }   // access request, 26 Nov 2026
+    email: 'bheraram.meghwal@educategirls.ngo', role: 'Field' },  // access request, 26 Nov 2026
+  { district: 'BALOTRA', block: 'SIWANA', name: 'Mamta Kumari Mali', designation: 'Program Coordinator',
+    email: 'mamta.mali@educategirls.ngo', role: 'Field' }         // access request, 27 Nov 2026
 ];
 function empAddPending_() {
   if (!EMP_ADD.length) return 0;
