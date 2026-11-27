@@ -6,6 +6,7 @@
 // delete it after use.
 //   node scripts/tests/make-staff-harness.js   then open http://localhost:8765/_staff_test.html
 //   ...?admin=0 shows the page as an ordinary officer (no menu item).
+//   ...?owner=0 shows it as Rajat (has the access, not the owner).
 const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync('docs/dashboard.html', 'utf8');
 const code = fs.readFileSync('Code.gs', 'utf8');
@@ -15,15 +16,19 @@ const DISTRICTS = vm.runInNewContext('(' + m[1] + ')');
 
 const STUB = `<script>
 (function(){
-  var ADMIN = !/[?&]admin=0/.test(location.search);
-  var FAKE = { name:'Alok Mohan', email:'alok.mohan@educategirls.ngo', role:'State', designation:'Test User',
+  var ADMIN = !/[?&]admin=0/.test(location.search), OWNER = !/[?&]owner=0/.test(location.search);
+  var FAKE = OWNER ? { name:'Alok Mohan', email:'alok.mohan@educategirls.ngo', role:'State', designation:'Test User',
+               district:'', districts:[''], token:'fake' }
+             : { name:'Rajat Sharma', email:'rajat.sharma@educategirls.ngo', role:'State', designation:'State Program Manager',
                district:'', districts:[''], token:'fake' };
+  var ADMINS = ['rajat.sharma@educategirls.ngo'];
   var gi = Storage.prototype.getItem, ri = Storage.prototype.removeItem, cl = Storage.prototype.clear;
   Storage.prototype.getItem = function(k){ return k === 'eg_grm_session' ? JSON.stringify(FAKE) : gi.call(this, k); };
   Storage.prototype.removeItem = function(k){ if (/^eg_grm_/.test(k)) return; return ri.call(this, k); };
   Storage.prototype.clear = function(){ if (this === window.sessionStorage) return; return cl.call(this); };
   var STAFF = [
     { district:'', block:'', name:'Alok Mohan', designation:'Test User', email:'alok.mohan@educategirls.ngo', role:'State', zone:'', addl:'' },
+    { district:'', block:'', name:'Rajat Sharma', designation:'State Program Manager', email:'rajat.sharma@educategirls.ngo', role:'State', zone:'', addl:'' },
     { district:'SIROHI', block:'SHEOGANJ, PINDWARA', name:'Bheraram Meghwal', designation:'Program Coordinator', email:'bheraram.meghwal@educategirls.ngo', role:'Field', zone:'', addl:'' },
     { district:'SIROHI', block:'SIROHI', name:'Sheetal Arya', designation:'Program Coordinator', email:'sheetal.arya@educategirls.ngo', role:'Field', zone:'', addl:'' },
     { district:'JALORE', block:'', name:'Sakshi Jain', designation:'District Operation Lead', email:'sakshi.jain@educategirls.ngo', role:'District', zone:'', addl:'RAJSAMAND, JODHPUR, PALI, SIROHI' },
@@ -38,7 +43,16 @@ const STUB = `<script>
     if (a === 'getDropdownData') return { stakeholders:['Chief Block Education Officer/BEO','Other'], purposes:['Enrollment'], blocksByDistrict:{}, metBefore:[], canManageStaff: ADMIN };
     if (a === 'getMyMeetings' || a === 'getAllMyMeetings' || a === 'getStateAllMeetings') return [];
     if (!ADMIN && /^staff/.test(a)) return { success:false, message:'FORBIDDEN' };
-    if (a === 'staffList') return { success:true, me:FAKE.email, staff:STAFF, districts:DISTRICTS, roles:['Field','District','State'], log:LOG.slice().reverse(), removed:[] };
+    if (a === 'staffList') return { success:true, me:FAKE.email, staff:STAFF, districts:DISTRICTS, roles:['Field','District','State'], log:LOG.slice().reverse(), removed:[],
+                                         owner: OWNER, owners:['alok.mohan@educategirls.ngo','gr@educategirls.ngo'], admins: ADMINS.slice() };
+    if (a === 'staffSetAccess') {
+      if (!OWNER) return { success:false, message:'FORBIDDEN' };
+      var w = STAFF.find(function(s){ return s.email === body.email; }), has = ADMINS.indexOf(body.email) !== -1;
+      if (body.on === has) return { success:true, changed:false, message: w.name + (has ? ' already has' : ' does not have') + ' Staff Manage access.' };
+      if (body.on) ADMINS.push(body.email); else ADMINS.splice(ADMINS.indexOf(body.email), 1);
+      LOG.push(['2026-11-27 15:10', FAKE.email, body.on ? 'Access given' : 'Access taken', w.email, w.name, body.on ? '' : 'Staff Manage access', body.on ? 'Staff Manage access' : '', '']);
+      return { success:true, changed:true, message: body.on ? w.name + ' can now use Staff Manage (after a page refresh).' : w.name + ' can no longer use Staff Manage.' };
+    }
     if (a === 'staffSave') {
       var r = body.rec, now = '2026-11-27 15:00';
       var rec = { district:(r.district||'').toUpperCase(), block:(r.blocks||[]).join(', '), name:r.name, designation:r.designation, email:r.email, role:r.role, zone:'', addl:(r.addl||[]).join(', ') };

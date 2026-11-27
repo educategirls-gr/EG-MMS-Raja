@@ -9,6 +9,7 @@ const src = fs.readFileSync('Code.gs', 'utf8');
 
 const noop = () => {}, props = {}, cache = {};
 const A = 'alok.mohan@educategirls.ngo', GR = 'gr@educategirls.ngo';
+const R = 'rajat.sharma@educategirls.ngo';
 const S = 'sheetal.arya@educategirls.ngo', K = 'sakshi.jain@educategirls.ngo', B = 'brijlal.kushwaha@educategirls.ngo';
 const HEAD = ['District', 'Block', 'Name', 'Designation', 'Email', 'Role', 'Zone', 'Additional Districts'];
 const sheets = {
@@ -56,10 +57,13 @@ const tA = login(A, 'State'), tS = login(S, 'Field', 'SIROHI'), tK = login(K, 'D
 ok('Alok (the default staff admin) may', ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_('  ALOK.MOHAN@educategirls.ngo '));
 ok('gr@ may', ctx.isStaffAdmin_(GR));
 ok('a Field officer and a District lead may not', !ctx.isStaffAdmin_(S) && !ctx.isStaffAdmin_(K));
-ok('Rajat Sharma may (given access 27 Nov 2026)', ctx.isStaffAdmin_('rajat.sharma@educategirls.ngo'));
-ok('the default list is exactly Alok and Rajat', ctx.STAFF_ADMINS_DEFAULT.join() === 'alok.mohan@educategirls.ngo,rajat.sharma@educategirls.ngo');
-props.STAFF_ADMINS = 'sakshi.jain@educategirls.ngo';
-ok('Script Property STAFF_ADMINS replaces the default', ctx.isStaffAdmin_(K) && !ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_(GR));
+ok('Rajat Sharma may (given access 27 Nov 2026)', ctx.isStaffAdmin_(R));
+ok('the owner is Alok, gr@ is one too, Rajat is not', ctx.STAFF_OWNERS.join() === A && ctx.isStaffOwner_(A) && ctx.isStaffOwner_(GR) && !ctx.isStaffOwner_(R));
+ok('the default access list is exactly Rajat', ctx.STAFF_ADMINS_DEFAULT.join() === R);
+props.STAFF_ADMINS = K;
+ok('Script Property STAFF_ADMINS replaces the default list; the owners keep access', ctx.isStaffAdmin_(K) && !ctx.isStaffAdmin_(R) && ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_(GR));
+props.STAFF_ADMINS = '-';
+ok('an emptied list stays empty (no fall back to the default)', !ctx.isStaffAdmin_(R) && !ctx.isStaffAdmin_(K) && ctx.isStaffAdmin_(A));
 delete props.STAFF_ADMINS;
 
 // the menu flag rides on getDropdownData (already asked on every page load)
@@ -141,6 +145,51 @@ ok('everyone else still there', ['alok.mohan@educategirls.ngo', S, K, 'mamta.mal
 // list shows the history
 const L2 = call('GET', 'staffList', tA);
 ok('list carries recent changes (newest first) and removed staff', L2.log.length === 4 && L2.log[0][2] === 'Remove' && L2.removed.length === 1 && L2.removed[0][4] === B, JSON.stringify(L2.log.map(r => r[2])));
+
+// owner (27 Nov 2026): Rajat cannot touch the owner, gr@ or anyone else with
+// the access; Alok can change and remove Rajat and gives or takes the access
+sheets.Employee_DB.push(['', '', 'Rajat Sharma', 'State Program Manager', R, 'State', '', '']);
+sheets.Employee_DB.push(['', '', 'GR Admin', 'Admin', GR, 'State', '', '']);
+const tR = login(R, 'State');
+const rEdit = (origEmail, rec) => call('POST', 'staffSave', tR, { mode: 'edit', origEmail, rec });
+const rRm = (email) => call('POST', 'staffRemove', tR, { email, reason: 'test' });
+const access = (token, email, on) => call('POST', 'staffSetAccess', token, { email, on, reqId: 'acc-' + Math.random() });
+const ALOK = { name: 'Alok Mohan', district: '', designation: 'Anything', role: 'State' };
+const SHEETAL = { name: 'Sheetal Arya', district: 'SIROHI', blocks: ['PINDWARA'], designation: 'Block Program Officer', role: 'Field' };
+const snap = JSON.stringify(sheets.Employee_DB), logLen = sheets['Staff Changes'].length;
+const LR = call('GET', 'staffList', tR);
+ok('Rajat gets the list, not as owner, with owners and access list', LR.success && LR.owner === false && LR.owners.indexOf(A) !== -1 && LR.owners.indexOf(GR) !== -1 && LR.admins.join() === R, JSON.stringify([LR.owner, LR.owners, LR.admins]));
+ok('Rajat cannot edit Alok', /protected/.test(rEdit(A, ALOK).message));
+ok('Rajat cannot remove Alok', /protected/.test(rRm(A).message));
+ok('Rajat cannot edit or remove gr@', /protected/.test(rEdit(GR, ALOK).message) && /protected/.test(rRm(GR).message));
+ok('Rajat cannot edit or remove his own row', /own row/.test(rEdit(R, ALOK).message) && /cannot remove yourself/.test(rRm(R).message));
+ok('Rajat cannot give or take access', access(tR, S, true).message === 'FORBIDDEN' && access(tR, A, false).message === 'FORBIDDEN');
+ok('...none of that changed anything', JSON.stringify(sheets.Employee_DB) === snap && !('STAFF_ADMINS' in props) && sheets['Staff Changes'].length === logLen);
+ok('Rajat can still edit an ordinary person', rEdit(S, SHEETAL).changed === true);
+const LA = call('GET', 'staffList', tA);
+ok('Alok is the owner in the list', LA.owner === true);
+const g1 = access(tA, S, true);
+ok('Alok gives Sheetal the access', g1.success && g1.changed && ctx.isStaffAdmin_(S) && ctx.isStaffAdmin_(R), JSON.stringify(g1));
+ok('...kept in Script Property STAFF_ADMINS, Rajat still in it', props.STAFF_ADMINS.split(',').sort().join() === [R, S].sort().join(), props.STAFF_ADMINS);
+const lgA = sheets['Staff Changes'].slice(-1)[0];
+ok('...logged as Access given, by Alok', lgA[2] === 'Access given' && lgA[1] === A && lgA[3] === S && lgA[4] === 'Sheetal Arya', JSON.stringify(lgA));
+ok('giving it again changes nothing', access(tA, S, true).changed === false && sheets['Staff Changes'].length === logLen + 2);
+ok('Rajat now cannot change or remove Sheetal (she has the access too)', /manages staff/.test(rEdit(S, SHEETAL).message) && /manages staff/.test(rRm(S).message));
+ok('Sheetal cannot change Rajat either', /manages staff/.test(call('POST', 'staffRemove', tS, { email: R }).message));
+ok('someone not in the staff list cannot be given it', /not in the staff list/.test(access(tA, 'nobody@educategirls.ngo', true).message) && props.STAFF_ADMINS.split(',').length === 2);
+ok('the owners own access cannot be taken', /owner always/.test(access(tA, A, false).message) && /owner always/.test(access(tA, GR, false).message));
+const t1 = access(tA, S, false);
+ok('Alok takes the access away from Sheetal', t1.success && t1.changed && !ctx.isStaffAdmin_(S) && ctx.isStaffAdmin_(R), JSON.stringify(t1));
+ok('...logged as Access taken', sheets['Staff Changes'].slice(-1)[0][2] === 'Access taken');
+ok('...her next staffList is FORBIDDEN', call('GET', 'staffList', tS).message === 'FORBIDDEN');
+const eR = edit(R, { name: 'Rajat Sharma', district: '', designation: 'State Program Lead', role: 'State' });
+ok('Alok can edit Rajat', eR.success && eR.changed && rowOf(R)[3] === 'State Program Lead', JSON.stringify(eR));
+const xR = rm(R, 'req-r', 'test');
+ok('Alok can remove Rajat, which takes the access away too', xR.success && xR.changed && emails().indexOf(R) === -1 && !ctx.isStaffAdmin_(R) && /access is taken away/.test(xR.message), JSON.stringify(xR));
+ok('...the access list is now empty and stays empty', props.STAFF_ADMINS === '-' && !ctx.isStaffAdmin_(R) && ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_(GR));
+ok('...the next staffList for Rajat is FORBIDDEN', call('GET', 'staffList', tR).message === 'FORBIDDEN');
+ok('Alok can give it back once Rajat is in the list again', add({ name: 'Rajat Sharma', email: R, district: '', designation: 'State Program Lead', role: 'State' }, 'req-r2').changed === true && access(tA, R, true).changed === true && props.STAFF_ADMINS === R);
+ok('a write of the access sent as GET is refused (POST only)', call('GET', 'staffSetAccess', tA).message === 'BODY_MISSING');
 
 // existing actions untouched
 ok('unknown actions still say so', /Unknown action/.test(call('GET', 'noSuchThing', tA).message));

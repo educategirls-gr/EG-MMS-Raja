@@ -646,7 +646,7 @@ function apiResponse(e, method) {
     // Writes and heavy requests that the pages send only as a POST. Sign-in is
     // deliberately not in this list: it is left exactly as it is.
     var POST_ONLY = { saveMeeting:1, updateMeeting:1, conductMeeting:1, postponeMeeting:1, cancelMeeting:1, uploadGovtMom:1,
-                      askMeetings:1, transcribeVoice:1, sendMeetingFeedback:1, staffSave:1, staffRemove:1 };
+                      askMeetings:1, transcribeVoice:1, sendMeetingFeedback:1, staffSave:1, staffRemove:1, staffSetAccess:1 };
 
     // Turned away at the door while the document is unreachable, so the queue
     // can empty. Signing in is on the allowed list and keeps working.
@@ -766,6 +766,7 @@ function apiResponse(e, method) {
         else if (action === 'staffList')        result = staffList(session);
         else if (action === 'staffSave')        result = body.rec ? staffSave(session, body) : { success:false, message:'BODY_MISSING' };
         else if (action === 'staffRemove')      result = body.email ? staffRemove(session, body) : { success:false, message:'BODY_MISSING' };
+        else if (action === 'staffSetAccess')   result = body.email ? staffSetAccess(session, body) : { success:false, message:'BODY_MISSING' };
         else if (action === 'bulkUpdateEmployeeDB') result = bulkUpdateEmployeeDB(body.rows || []);
         else if (action === 'peekSourceSheet')  result = peekSourceSheet(e.parameter.sourceId || '', e.parameter.sheetIndex || '0');
         else if (action === 'importFromSource') result = importFromSource(e.parameter.sourceId || '', e.parameter.sheetIndex || '0');
@@ -7363,23 +7364,49 @@ function empAddPending_() {
 // can sign in at once, someone removed is shown "access revoked" on their next
 // page load. A transfer reaches a person already signed in at their next
 // sign-in, because a session keeps the district it started with.
-var STAFF_ADMINS_DEFAULT = ['alok.mohan@educategirls.ngo',    // Alok's test user
-                            'rajat.sharma@educategirls.ngo'];  // given access 27 Nov 2026
+//
+// Owners (27 Nov 2026, at Alok's request): Alok's test user, and gr@ through
+// ADMIN_EMAILS. Only an owner may change or remove the row of an owner or of
+// anyone else who manages staff, and only an owner gives or takes the Staff
+// Manage access, from the page (staffSetAccess). That access list lives in
+// Script Property STAFF_ADMINS once an owner has changed it (the default below
+// is only the start). The owners themselves are listed in code only, so nobody
+// can make themselves one from the app.
+var STAFF_OWNERS         = ['alok.mohan@educategirls.ngo'];    // Alok's test user
+var STAFF_ADMINS_DEFAULT = ['rajat.sharma@educategirls.ngo'];  // given access 27 Nov 2026
 var STAFF_ROLES          = ['Field', 'District', 'State'];
 var STAFF_LOG_SHEET      = 'Staff Changes';
 var STAFF_REMOVED_SHEET  = 'Removed Staff';
 var STAFF_HEAD           = ['District', 'Block', 'Name', 'Designation', 'Email', 'Role', 'Zone', 'Additional Districts'];
 
 function staffAdmins_() {
-  var raw = '';
-  try { raw = PropertiesService.getScriptProperties().getProperty('STAFF_ADMINS') || ''; } catch (e) {}
-  var list = raw.trim() ? raw.split(/[,;\s]+/) : STAFF_ADMINS_DEFAULT;
-  return list.map(function(x) { return x.toString().trim().toLowerCase(); }).filter(Boolean);
+  var raw = null;
+  try { raw = PropertiesService.getScriptProperties().getProperty('STAFF_ADMINS'); } catch (e) {}
+  // Once written (to nobody it is '-'), the property is the list; never back to the default.
+  var list = raw == null ? STAFF_ADMINS_DEFAULT : raw.split(/[,;\s]+/);
+  return list.map(function(x) { return x.toString().trim().toLowerCase(); })
+             .filter(function(x, i, a) { return x.indexOf('@') > 0 && a.indexOf(x) === i; });
+}
+function staffAdminsWrite_(list) {
+  PropertiesService.getScriptProperties().setProperty('STAFF_ADMINS', list.length ? list.join(',') : '-');
+}
+function isStaffOwner_(email) {
+  email = (email || '').toString().trim().toLowerCase();
+  if (!email) return false;
+  return isAdmin_(email) || STAFF_OWNERS.indexOf(email) !== -1;
 }
 function isStaffAdmin_(email) {
   email = (email || '').toString().trim().toLowerCase();
   if (!email) return false;
-  return isAdmin_(email) || staffAdmins_().indexOf(email) !== -1;
+  return isStaffOwner_(email) || staffAdmins_().indexOf(email) !== -1;
+}
+// Why `me` may not change or remove `target`; empty when it may.
+function staffGuard_(me, target) {
+  if (target === me) return 'You cannot change your own row.';
+  if (isStaffOwner_(me)) return '';
+  if (isStaffOwner_(target)) return 'This row is protected: only the owner can change it.';
+  if (staffAdmins_().indexOf(target) !== -1) return 'This person also manages staff: only the owner can change their row.';
+  return '';
 }
 
 function staffSplit_(v) {
@@ -7480,6 +7507,9 @@ function staffList(session) {
     staff.push(staffRow_(v[i]));
   }
   return { success: true, me: me, staff: staff, districts: RJ_DISTRICT_BLOCKS, roles: STAFF_ROLES,
+           owner: isStaffOwner_(me),
+           owners: STAFF_OWNERS.concat(ADMIN_EMAILS).map(function(x) { return x.toLowerCase(); }),
+           admins: staffAdmins_(),
            log: staffTail_(ss, STAFF_LOG_SHEET, 30), removed: staffTail_(ss, STAFF_REMOVED_SHEET, 30) };
 }
 
@@ -7521,7 +7551,8 @@ function staffSaveLocked_(me, body) {
   }
   var orig = (body.origEmail || '').toString().trim().toLowerCase();
   if (!orig) return { success: false, message: 'Which person? The email did not arrive.' };
-  if (orig === me) return { success: false, message: 'You cannot change your own row. Ask the admin.' };
+  var guard = staffGuard_(me, orig);
+  if (guard) return { success: false, message: guard };
   if (!at[orig]) return { success: false, message: orig + ' is not in the staff list any more (removed or changed by someone else). Refresh the list.' };
   var row = at[orig], old = staffRow_(v[row - 1]);
   var rec = {}; for (var k in (body.rec || {})) rec[k] = body.rec[k];
@@ -7552,6 +7583,8 @@ function staffRemove(session, body) {
   var reason = (body.reason || '').toString().trim().replace(/\s+/g, ' ').slice(0, 300);
   if (!email) return { success: false, message: 'Which person? The email did not arrive.' };
   if (email === me) return { success: false, message: 'You cannot remove yourself.' };
+  var guard = staffGuard_(me, email);
+  if (guard) return { success: false, message: guard };
   var reqId = (body.reqId || '').toString().slice(0, 80), prev = reqId ? cGet('staffreq_' + reqId) : null;
   if (prev) return prev;
   var res = withScriptLock_(function() {
@@ -7571,13 +7604,48 @@ function staffRemove(session, body) {
     staffSheet_(ss, STAFF_REMOVED_SHEET, STAFF_HEAD.concat(['Removed At', 'Removed By', 'Reason']))
       .appendRow(cur.concat([staffNow_(), me, reason]));
     sh.deleteRow(row);
-    var o = staffRow_(cur);
+    var o = staffRow_(cur), msg = o.name + ' removed. Their row is kept in the ' + STAFF_REMOVED_SHEET + ' tab.';
     staffLog_(ss, me, 'Remove', o, staffText_(o), '', reason);
-    return { success: true, email: email, changed: true, message: o.name + ' removed. Their row is kept in the ' + STAFF_REMOVED_SHEET + ' tab.' };
+    // Someone removed loses the Staff Manage access too, so adding them back later does not bring it back.
+    var admins = staffAdmins_();
+    if (admins.indexOf(email) !== -1) {
+      staffAdminsWrite_(admins.filter(function(x) { return x !== email; }));
+      msg += ' Their Staff Manage access is taken away too.';
+    }
+    return { success: true, email: email, changed: true, message: msg };
   });
   if (res && res.success && res.changed) staffAfterChange_([email]);
   if (reqId && res) cPut('staffreq_' + reqId, res, 1800);
   return res;
+}
+
+// Owner only: give (on) or take away the Staff Manage access. The person must
+// be in the staff list to be given it. Logged in Staff Changes. A page already
+// open notices at its next load; the server refuses at once.
+function staffSetAccess(session, body) {
+  var me = (session && session.email || '').toString().trim().toLowerCase();
+  if (!isStaffOwner_(me)) return { success: false, message: 'FORBIDDEN' };
+  body = body || {};
+  var email = (body.email || '').toString().trim().toLowerCase(), on = body.on === true || body.on === 'true';
+  if (!email) return { success: false, message: 'Which person? The email did not arrive.' };
+  if (email === me || isStaffOwner_(email)) return { success: false, message: 'The owner always has this access.' };
+  return withScriptLock_(function() {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(EMPLOYEE_SHEET);
+    if (!sh) return { success: false, message: EMPLOYEE_SHEET + ' not found' };
+    var v = sh.getDataRange().getValues(), who = null;
+    for (var i = 1; i < v.length; i++) {
+      if ((v[i][4] || '').toString().trim().toLowerCase() === email) { who = staffRow_(v[i]); break; }
+    }
+    if (on && !who) return { success: false, message: email + ' is not in the staff list. Add them first.' };
+    var list = staffAdmins_(), has = list.indexOf(email) !== -1, name = who ? who.name : email;
+    if (on === has) return { success: true, changed: false, email: email,
+                             message: name + (on ? ' already has Staff Manage access.' : ' does not have Staff Manage access.') };
+    staffAdminsWrite_(on ? list.concat([email]) : list.filter(function(x) { return x !== email; }));
+    staffLog_(ss, me, on ? 'Access given' : 'Access taken', { email: email, name: who ? who.name : '' },
+              on ? '' : 'Staff Manage access', on ? 'Staff Manage access' : '', '');
+    return { success: true, changed: true, email: email,
+             message: on ? name + ' can now use Staff Manage (after a page refresh).' : name + ' can no longer use Staff Manage.' };
+  });
 }
 
 function EMP_add_now() {

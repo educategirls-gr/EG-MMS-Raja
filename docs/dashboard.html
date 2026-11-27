@@ -481,6 +481,10 @@
     .st-sub { font-size:12px; color:#6B7280; margin-top:2px; word-break:break-word; }
     .st-addl { font-size:11px; font-weight:600; color:#1D4ED8; }
     .st-you { font-size:10px; font-weight:700; color:#fff; background:#6B7280; border-radius:10px; padding:1px 7px; vertical-align:middle; }
+    .st-owner { background:#7C3AED; }
+    .st-key { background:#FEF3C7; color:#92400E; }
+    .st-lock { font-size:12px; font-weight:600; color:#6B7280; padding:5px 4px; white-space:nowrap; }
+    .st-btn-key { border-color:#FDE68A; color:#92400E; }
     .st-acts { display:flex; gap:6px; flex:0 0 auto; }
     .st-btn { background:#fff; border:1px solid #BFDBFE; color:#1D4ED8; font-size:12px; font-weight:600; border-radius:6px; padding:5px 10px; cursor:pointer; }
     .st-btn-red { border-color:#FECACA; color:#B91C1C; }
@@ -4875,29 +4879,39 @@
   }
   function stRender() {
     if (!_st.data) return;
-    var rows = stRows(), me = (_st.data.me || '').toLowerCase();
+    var rows = stRows(), me = (_st.data.me || '').toLowerCase(), iAmOwner = !!_st.data.owner;
+    var owners = (_st.data.owners || []).map(function(x) { return String(x).toLowerCase(); });
+    var admins = (_st.data.admins || []).map(function(x) { return String(x).toLowerCase(); });
     document.getElementById('st-count').textContent = rows.length + ' of ' + _st.data.staff.length + ' people';
     if (!rows.length) {
       document.getElementById('st-content').innerHTML = '<div class="empty-state"><p>No one matches.</p></div>';
       return;
     }
     document.getElementById('st-content').innerHTML = rows.map(function(s) {
-      var mine = (s.email || '').toLowerCase() === me;
+      var em = (s.email || '').toLowerCase(), mine = em === me;
+      var isOwner = owners.indexOf(em) !== -1, hasKey = !isOwner && admins.indexOf(em) !== -1;
+      // Only the owner changes an owner's row or the row of someone else who manages staff.
+      var acts = mine ? ''
+        : (!iAmOwner && (isOwner || hasKey)) ? '<span class="st-lock">🔒 Protected</span>'
+        : '<button class="st-btn" onclick="stOpen(\'edit\',' + s._i + ')">✏️ Edit</button>' +
+          '<button class="st-btn st-btn-red" onclick="stOpenRemove(' + s._i + ')">🗑 Remove</button>' +
+          (iAmOwner && !isOwner ? '<button class="st-btn st-btn-key" onclick="stSetAccess(' + s._i + ',' + (hasKey ? 'false' : 'true') + ')">' +
+            (hasKey ? '🔒 Take access' : '🔑 Give access') + '</button>' : '');
       return '<div class="st-row">' +
-        '<div class="st-main"><div class="st-name">' + esc(s.name) + (mine ? ' <span class="st-you">You</span>' : '') + '</div>' +
+        '<div class="st-main"><div class="st-name">' + esc(s.name) + (mine ? ' <span class="st-you">You</span>' : '') +
+          (isOwner ? ' <span class="st-you st-owner">Owner</span>' : '') +
+          (hasKey ? ' <span class="st-you st-key">🔑 Staff Manage</span>' : '') + '</div>' +
           '<div class="st-sub">' + esc(s.designation) + ' &middot; ' + esc(s.email) + '</div></div>' +
         '<div class="st-place"><div>' + esc(s.district || 'State level') + (s.addl ? ' <span class="st-addl">+ ' + esc(s.addl) + '</span>' : '') + '</div>' +
           '<div class="st-sub">' + esc(s.block || '-') + '</div></div>' +
         '<span class="badge" style="background:' + (ST_ROLE_COLOR[s.role] || '#6B7280') + ';color:#fff;">' + esc(s.role) + '</span>' +
-        '<div class="st-acts">' + (mine ? '' :
-          '<button class="st-btn" onclick="stOpen(\'edit\',' + s._i + ')">✏️ Edit</button>' +
-          '<button class="st-btn st-btn-red" onclick="stOpenRemove(' + s._i + ')">🗑 Remove</button>') + '</div>' +
+        '<div class="st-acts">' + acts + '</div>' +
       '</div>';
     }).join('');
   }
   function stRenderLog() {
     var log = (_st.data && _st.data.log) || [], el = document.getElementById('st-log');
-    var col = { Add: '#16A34A', Edit: '#2563EB', Transfer: '#7C3AED', Remove: '#B91C1C' };
+    var col = { Add: '#16A34A', Edit: '#2563EB', Transfer: '#7C3AED', Remove: '#B91C1C', 'Access given': '#B45309', 'Access taken': '#4B5563' };
     if (!log.length) { el.innerHTML = '<div class="empty-state" style="padding:20px;"><p>No changes made here yet.</p></div>'; return; }
     // [When, By, Action, Email, Name, Before, After, Note]
     el.innerHTML = log.map(function(r) {
@@ -5011,6 +5025,21 @@
       if (res.message === 'FORBIDDEN') { stModal(false); stShowNav(false); showView('create'); return; }
       _st.reqId = stNewReq();   // a refused save may be corrected and sent again as a new request
       stAlert('st-f-alert', res.message || 'Not saved.');
+    });
+  }
+  // Owner only (the server checks again): give or take away the Staff Manage access.
+  function stSetAccess(i, on) {
+    var s = _st.data && _st.data.staff[i];
+    if (!s || _st.busy) return;
+    var q = on ? 'Give ' + s.name + ' the Staff Manage access? They will be able to add, transfer and remove staff, but not change you or anyone else who has this access.'
+               : 'Take the Staff Manage access away from ' + s.name + '?';
+    if (!confirm(q)) return;
+    _st.busy = true;
+    showToast(on ? 'Giving access...' : 'Taking access away...', 3000);
+    stPost('staffSetAccess', { email: s.email, on: on, reqId: stNewReq() }, function(res) {
+      _st.busy = false;
+      showToast(res.message === 'FORBIDDEN' ? 'Only the owner can do this.' : (res.message || (res.success ? 'Done.' : 'Not changed.')), 7000);
+      loadStaff();
     });
   }
   function stOpenRemove(i) {
@@ -5236,6 +5265,11 @@
     'Removing...': 'हटाया जा रहा है...',
     'State level': 'राज्य स्तर',
     'You': 'आप',
+    'Owner': 'मालिक',
+    'Protected': 'सुरक्षित',
+    'Give access': 'अनुमति दें',
+    'Take access': 'अनुमति वापस लें',
+    'Only the owner can do this.': 'यह केवल मालिक कर सकते हैं।',
     'Pick a district first.': 'पहले जिला चुनें।',
     '(old name)': '(पुराना नाम)',
     'No one matches.': 'कोई नहीं मिला।',
