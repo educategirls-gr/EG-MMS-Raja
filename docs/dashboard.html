@@ -849,9 +849,10 @@
               </select>
             </div>
           </div>
-          <div class="form-row">
+          <!-- Hidden for the State role: State staff have no district (27 Nov 2026) -->
+          <div class="form-row" id="st-dist-row">
             <div class="field full">
-              <label>District <span class="req" id="st-dist-req">*</span></label>
+              <label>District <span class="req">*</span></label>
               <select id="st-f-district" onchange="stDistrictChanged()"></select>
             </div>
           </div>
@@ -4962,8 +4963,10 @@
   }
   function stRoleChanged() {
     var r = document.getElementById('st-f-role').value;
-    document.getElementById('st-dist-req').style.display  = r === 'State' ? 'none' : '';
-    document.getElementById('st-block-req').style.display = r === 'Field' ? '' : 'none';
+    // State staff cover the whole state: no district or block to pick, so none is shown.
+    document.getElementById('st-dist-row').style.display   = r === 'State' ? 'none' : '';
+    document.getElementById('st-blocks-row').style.display = r === 'State' ? 'none' : '';
+    document.getElementById('st-block-req').style.display  = r === 'Field' ? '' : 'none';
     document.getElementById('st-addl-row').style.display  = r === 'District' ? '' : 'none';
   }
   function stAlert(id, msg) { var a = document.getElementById(id); a.textContent = msg; a.classList.add('show'); }
@@ -4991,8 +4994,8 @@
       email:       document.getElementById('st-f-email').value.trim().toLowerCase(),
       designation: document.getElementById('st-f-desig').value.trim(),
       role:        role,
-      district:    document.getElementById('st-f-district').value,
-      blocks:      document.getElementById('st-f-district').value ? stChecked('st-f-blocks') : [],
+      district:    role === 'State' ? '' : document.getElementById('st-f-district').value,
+      blocks:      (role !== 'State' && document.getElementById('st-f-district').value) ? stChecked('st-f-blocks') : [],
       addl:        role === 'District' ? stChecked('st-f-addl') : []
     };
     var bad = !rec.name ? 'Name is required.'

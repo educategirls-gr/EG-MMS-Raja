@@ -7363,7 +7363,8 @@ function empAddPending_() {
 // can sign in at once, someone removed is shown "access revoked" on their next
 // page load. A transfer reaches a person already signed in at their next
 // sign-in, because a session keeps the district it started with.
-var STAFF_ADMINS_DEFAULT = ['alok.mohan@educategirls.ngo'];
+var STAFF_ADMINS_DEFAULT = ['alok.mohan@educategirls.ngo',    // Alok's test user
+                            'rajat.sharma@educategirls.ngo'];  // given access 27 Nov 2026
 var STAFF_ROLES          = ['Field', 'District', 'State'];
 var STAFF_LOG_SHEET      = 'Staff Changes';
 var STAFF_REMOVED_SHEET  = 'Removed Staff';

@@ -56,6 +56,8 @@ const tA = login(A, 'State'), tS = login(S, 'Field', 'SIROHI'), tK = login(K, 'D
 ok('Alok (the default staff admin) may', ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_('  ALOK.MOHAN@educategirls.ngo '));
 ok('gr@ may', ctx.isStaffAdmin_(GR));
 ok('a Field officer and a District lead may not', !ctx.isStaffAdmin_(S) && !ctx.isStaffAdmin_(K));
+ok('Rajat Sharma may (given access 27 Nov 2026)', ctx.isStaffAdmin_('rajat.sharma@educategirls.ngo'));
+ok('the default list is exactly Alok and Rajat', ctx.STAFF_ADMINS_DEFAULT.join() === 'alok.mohan@educategirls.ngo,rajat.sharma@educategirls.ngo');
 props.STAFF_ADMINS = 'sakshi.jain@educategirls.ngo';
 ok('Script Property STAFF_ADMINS replaces the default', ctx.isStaffAdmin_(K) && !ctx.isStaffAdmin_(A) && ctx.isStaffAdmin_(GR));
 delete props.STAFF_ADMINS;
