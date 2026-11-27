@@ -646,7 +646,7 @@ function apiResponse(e, method) {
     // Writes and heavy requests that the pages send only as a POST. Sign-in is
     // deliberately not in this list: it is left exactly as it is.
     var POST_ONLY = { saveMeeting:1, updateMeeting:1, conductMeeting:1, postponeMeeting:1, cancelMeeting:1, uploadGovtMom:1,
-                      askMeetings:1, transcribeVoice:1, sendMeetingFeedback:1 };
+                      askMeetings:1, transcribeVoice:1, sendMeetingFeedback:1, staffSave:1, staffRemove:1 };
 
     // Turned away at the door while the document is unreachable, so the queue
     // can empty. Signing in is on the allowed list and keeps working.
@@ -762,6 +762,10 @@ function apiResponse(e, method) {
         else if (action === 'cancelMeeting')    { body.email = session.email; result = cancelMeeting(body); }
         else if (action === 'updateMeetingStatus') result = updateMeetingStatus(body.meetingId || '', body);
         else if (action === 'clearMyCache')     result = clearMyCache(session.email);
+        // Staff Manage page: each checks isStaffAdmin_ itself (FORBIDDEN otherwise).
+        else if (action === 'staffList')        result = staffList(session);
+        else if (action === 'staffSave')        result = body.rec ? staffSave(session, body) : { success:false, message:'BODY_MISSING' };
+        else if (action === 'staffRemove')      result = body.email ? staffRemove(session, body) : { success:false, message:'BODY_MISSING' };
         else if (action === 'bulkUpdateEmployeeDB') result = bulkUpdateEmployeeDB(body.rows || []);
         else if (action === 'peekSourceSheet')  result = peekSourceSheet(e.parameter.sourceId || '', e.parameter.sheetIndex || '0');
         else if (action === 'importFromSource') result = importFromSource(e.parameter.sourceId || '', e.parameter.sheetIndex || '0');
@@ -1735,8 +1739,11 @@ function getDropdownData(email) {
     if (metBefore.length > 600) metBefore.length = 600;
   } catch (mbe) { metBefore = []; }
 
+  // Shows the Staff Manage menu item to the people allowed it (the server checks again on every staff action).
+  var canManageStaff = false;
+  try { canManageStaff = isStaffAdmin_(email); } catch (sae) {}
   return { stakeholders: stakeholders, purposes: purposes, departments: departments,
-           blocksByDistrict: blocksByDistrict, metBefore: metBefore };
+           blocksByDistrict: blocksByDistrict, metBefore: metBefore, canManageStaff: canManageStaff };
 }
 
 // ------------------------------------------------------------
@@ -7342,6 +7349,236 @@ function empAddPending_() {
   try { CACHE_clearAll(); }    catch (e) {}
   return added;
 }
+// ── Staff Manage page (27 Nov 2026) ───────────────────────────────────────
+// A page inside the app where a trusted person adds staff, transfers them
+// (district, block), changes their post or role, and removes them, without
+// opening the sheet. Only the emails in STAFF_ADMINS see the page, and every
+// action is checked here again, so knowing the link is not enough. The list
+// can change without code: Script Property STAFF_ADMINS (comma separated)
+// replaces the default below; gr@ (ADMIN_EMAILS) always may.
+// Every change goes in the Staff Changes tab (who, when, before, after), and a
+// removed person's row is copied to the Removed Staff tab before it goes, so
+// nothing is lost. Nobody can change or remove their own row. After each
+// change the sign-in copy is refreshed and every cache cleared: someone added
+// can sign in at once, someone removed is shown "access revoked" on their next
+// page load. A transfer reaches a person already signed in at their next
+// sign-in, because a session keeps the district it started with.
+var STAFF_ADMINS_DEFAULT = ['alok.mohan@educategirls.ngo'];
+var STAFF_ROLES          = ['Field', 'District', 'State'];
+var STAFF_LOG_SHEET      = 'Staff Changes';
+var STAFF_REMOVED_SHEET  = 'Removed Staff';
+var STAFF_HEAD           = ['District', 'Block', 'Name', 'Designation', 'Email', 'Role', 'Zone', 'Additional Districts'];
+
+function staffAdmins_() {
+  var raw = '';
+  try { raw = PropertiesService.getScriptProperties().getProperty('STAFF_ADMINS') || ''; } catch (e) {}
+  var list = raw.trim() ? raw.split(/[,;\s]+/) : STAFF_ADMINS_DEFAULT;
+  return list.map(function(x) { return x.toString().trim().toLowerCase(); }).filter(Boolean);
+}
+function isStaffAdmin_(email) {
+  email = (email || '').toString().trim().toLowerCase();
+  if (!email) return false;
+  return isAdmin_(email) || staffAdmins_().indexOf(email) !== -1;
+}
+
+function staffSplit_(v) {
+  var src = Array.isArray(v) ? v : (v || '').toString().split(/[,;]/), out = [];
+  src.forEach(function(x) {
+    var s = (x || '').toString().trim().toUpperCase().replace(/\s+/g, ' ');
+    if (s && out.indexOf(s) === -1) out.push(s);
+  });
+  return out;
+}
+
+// Checks a record from the page and puts it in the sheet's form. A block or an
+// additional district the person already has is kept even when it is not on
+// the official list (a few old rows have those), so editing someone's post
+// never forces a block change nobody asked for.
+function staffClean_(r, keepBlocks, keepAddl) {
+  r = r || {};
+  keepBlocks = keepBlocks || []; keepAddl = keepAddl || [];
+  var out = {
+    district:    (r.district || '').toString().trim().toUpperCase(),
+    name:        (r.name || '').toString().trim().replace(/\s+/g, ' '),
+    designation: (r.designation || '').toString().trim().replace(/\s+/g, ' '),
+    email:       (r.email || '').toString().trim().toLowerCase(),
+    role:        normalizeRole_((r.role || '').toString().trim() || 'none')
+  };
+  if (!out.name) return { error: 'Name is required.' };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(out.email) || out.email.split('@')[1] !== ALLOWED_DOMAIN.toLowerCase())
+    return { error: 'Email must be an @' + ALLOWED_DOMAIN + ' address.' };
+  if (!out.designation) return { error: 'Designation is required.' };
+  if (STAFF_ROLES.indexOf(out.role) === -1) return { error: 'Role must be Field, District or State.' };
+  if (!out.district && out.role !== 'State') return { error: 'District is required.' };
+  if (out.district && !RJ_DISTRICT_BLOCKS[out.district]) return { error: 'District ' + out.district + ' is not on the official list.' };
+  var official = out.district ? RJ_DISTRICT_BLOCKS[out.district] : [];
+  var blocks = staffSplit_(r.blocks != null ? r.blocks : r.block);
+  for (var i = 0; i < blocks.length; i++) {
+    if (official.indexOf(blocks[i]) === -1 && keepBlocks.indexOf(blocks[i]) === -1)
+      return { error: 'Block ' + blocks[i] + ' is not an official block of ' + (out.district || 'that district') + '.' };
+  }
+  if (out.role === 'Field' && !blocks.length) return { error: 'Pick at least one block.' };
+  var addl = out.role === 'District' ? staffSplit_(r.addl) : [];
+  addl = addl.filter(function(d) { return d !== out.district; });
+  for (var j = 0; j < addl.length; j++) {
+    if (!RJ_DISTRICT_BLOCKS[addl[j]] && keepAddl.indexOf(addl[j]) === -1)
+      return { error: 'Additional district ' + addl[j] + ' is not on the official list.' };
+  }
+  out.block = blocks.join(', ');
+  out.addl  = addl.join(', ');
+  return { rec: out };
+}
+
+function staffSheet_(ss, name, head) {
+  var sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.appendRow(head); }
+  return sh;
+}
+function staffNow_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Kolkata', 'yyyy-MM-dd HH:mm');
+}
+function staffText_(r) {
+  if (!r) return '';
+  return [r.district || '-', r.block || '-', r.designation || '-', r.role || '-'].join(' | ') + (r.addl ? ' | + ' + r.addl : '');
+}
+function staffRow_(v) {
+  return { district: (v[0] || '').toString().trim(), block: (v[1] || '').toString().trim(), name: (v[2] || '').toString().trim(),
+           designation: (v[3] || '').toString().trim(), email: (v[4] || '').toString().trim(), role: normalizeRole_(v[5]),
+           zone: (v[6] || '').toString().trim(), addl: (v[7] || '').toString().trim() };
+}
+function staffLog_(ss, by, action, rec, before, after, note) {
+  staffSheet_(ss, STAFF_LOG_SHEET, ['When', 'By', 'Action', 'Email', 'Name', 'Before', 'After', 'Note'])
+    .appendRow([staffNow_(), by, action, rec.email || '', rec.name || '', before || '', after || '', note || '']);
+}
+function staffTail_(ss, name, n) {
+  var sh = ss.getSheetByName(name);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var v = sh.getDataRange().getValues(), out = [];
+  for (var i = v.length - 1; i >= 1 && out.length < n; i--) {
+    out.push(v[i].map(function(c) { return c instanceof Date ? Utilities.formatDate(c, 'Asia/Kolkata', 'yyyy-MM-dd HH:mm') : (c == null ? '' : c.toString()); }));
+  }
+  return out;
+}
+function staffAfterChange_(emails) {
+  try { EMP_refreshMirror(); } catch (e) {}
+  try { CACHE_clearAll(); }    catch (e) {}
+  // Someone removed is no longer in the copy CACHE_clearAll walks, so their
+  // cached record is dropped by name.
+  try { cDel.apply(null, (emails || []).map(function(e) { return 'emp_' + e.toLowerCase(); })); } catch (e) {}
+}
+
+function staffList(session) {
+  var me = (session && session.email || '').toString().trim().toLowerCase();
+  if (!isStaffAdmin_(me)) return { success: false, message: 'FORBIDDEN' };
+  if (sheetBreakerTripped_()) return { success: false, message: 'The sheet is not answering right now. Please try again in a few minutes.' };
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(EMPLOYEE_SHEET);
+  if (!sh) return { success: false, message: EMPLOYEE_SHEET + ' not found' };
+  var v = sh.getDataRange().getValues(), staff = [];
+  for (var i = 1; i < v.length; i++) {
+    if (!(v[i][4] || '').toString().trim()) continue;
+    staff.push(staffRow_(v[i]));
+  }
+  return { success: true, me: me, staff: staff, districts: RJ_DISTRICT_BLOCKS, roles: STAFF_ROLES,
+           log: staffTail_(ss, STAFF_LOG_SHEET, 30), removed: staffTail_(ss, STAFF_REMOVED_SHEET, 30) };
+}
+
+// Add (mode 'add') or change (mode 'edit', found by origEmail) one person.
+// The page sends a reqId and asks again with the same one when a reply is
+// lost, so a repeat gets the first answer instead of a second change.
+function staffSave(session, body) {
+  var me = (session && session.email || '').toString().trim().toLowerCase();
+  if (!isStaffAdmin_(me)) return { success: false, message: 'FORBIDDEN' };
+  body = body || {};
+  var reqId = (body.reqId || '').toString().slice(0, 80), prev = reqId ? cGet('staffreq_' + reqId) : null;
+  if (prev) return prev;
+  var res = withScriptLock_(function() { return staffSaveLocked_(me, body); });
+  if (res && res.success && res.changed) staffAfterChange_([res.email]);
+  if (reqId && res) cPut('staffreq_' + reqId, res, 1800);
+  return res;
+}
+function staffSaveLocked_(me, body) {
+  var mode = body.mode === 'edit' ? 'edit' : 'add';
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(EMPLOYEE_SHEET);
+  if (!sh) return { success: false, message: EMPLOYEE_SHEET + ' not found' };
+  var v = sh.getDataRange().getValues(), at = {};
+  for (var i = 1; i < v.length; i++) {
+    var em = (v[i][4] || '').toString().trim().toLowerCase();
+    if (em && !at[em]) at[em] = i + 1;   // sheet row number
+  }
+  if (mode === 'add') {
+    var c = staffClean_(body.rec, [], []);
+    if (c.error) return { success: false, message: c.error };
+    var r = c.rec;
+    if (at[r.email]) {
+      var cur = staffRow_(v[at[r.email] - 1]);
+      if (staffText_(cur) === staffText_(r) && cur.name === r.name) return { success: true, email: r.email, changed: false, message: 'Already in the staff list.' };
+      return { success: false, message: r.email + ' is already in the staff list (' + cur.name + ', ' + (cur.district || 'State') + '). Use Edit to change it.' };
+    }
+    sh.appendRow([r.district, r.block, r.name, r.designation, r.email, r.role, '', r.addl]);
+    staffLog_(ss, me, 'Add', r, '', staffText_(r), '');
+    return { success: true, email: r.email, changed: true, message: r.name + ' added. They can sign in now with "Get a code".' };
+  }
+  var orig = (body.origEmail || '').toString().trim().toLowerCase();
+  if (!orig) return { success: false, message: 'Which person? The email did not arrive.' };
+  if (orig === me) return { success: false, message: 'You cannot change your own row. Ask the admin.' };
+  if (!at[orig]) return { success: false, message: orig + ' is not in the staff list any more (removed or changed by someone else). Refresh the list.' };
+  var row = at[orig], old = staffRow_(v[row - 1]);
+  var rec = {}; for (var k in (body.rec || {})) rec[k] = body.rec[k];
+  rec.email = orig;   // the email is who the person is; it is not changed here
+  var c2 = staffClean_(rec, staffSplit_(old.block), staffSplit_(old.addl));
+  if (c2.error) return { success: false, message: c2.error };
+  var n = c2.rec, what = [];
+  if (n.name !== old.name) what.push('name');
+  if (n.district !== old.district.toUpperCase()) what.push('district');
+  if (staffSplit_(n.block).join() !== staffSplit_(old.block).join()) what.push('block');
+  if (n.designation !== old.designation) what.push('designation');
+  if (n.role !== old.role) what.push('role');
+  if (staffSplit_(n.addl).join() !== staffSplit_(old.addl).join()) what.push('additional districts');
+  if (!what.length) return { success: true, email: orig, changed: false, message: 'Nothing changed.' };
+  sh.getRange(row, 1, 1, 4).setValues([[n.district, n.block, n.name, n.designation]]);
+  sh.getRange(row, 6).setValue(n.role);
+  sh.getRange(row, 8).setValue(n.addl);
+  var action = (what.indexOf('district') !== -1 || what.indexOf('block') !== -1) ? 'Transfer' : 'Edit';
+  staffLog_(ss, me, action, { email: old.email, name: n.name }, staffText_(old), staffText_(n), 'Changed: ' + what.join(', '));
+  return { success: true, email: orig, changed: true, message: n.name + ' updated (' + what.join(', ') + '). It applies from their next sign-in.' };
+}
+
+function staffRemove(session, body) {
+  var me = (session && session.email || '').toString().trim().toLowerCase();
+  if (!isStaffAdmin_(me)) return { success: false, message: 'FORBIDDEN' };
+  body = body || {};
+  var email = (body.email || '').toString().trim().toLowerCase();
+  var reason = (body.reason || '').toString().trim().replace(/\s+/g, ' ').slice(0, 300);
+  if (!email) return { success: false, message: 'Which person? The email did not arrive.' };
+  if (email === me) return { success: false, message: 'You cannot remove yourself.' };
+  var reqId = (body.reqId || '').toString().slice(0, 80), prev = reqId ? cGet('staffreq_' + reqId) : null;
+  if (prev) return prev;
+  var res = withScriptLock_(function() {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID), sh = ss.getSheetByName(EMPLOYEE_SHEET);
+    if (!sh) return { success: false, message: EMPLOYEE_SHEET + ' not found' };
+    var v = sh.getDataRange().getValues(), row = 0;
+    for (var i = 1; i < v.length; i++) {
+      if ((v[i][4] || '').toString().trim().toLowerCase() === email) { row = i + 1; break; }
+    }
+    if (!row) return { success: true, email: email, changed: false, message: email + ' is not in the staff list (already removed).' };
+    // Read again just before writing: the row is deleted only if it is still this person.
+    if ((sh.getRange(row, 5).getValue() || '').toString().trim().toLowerCase() !== email)
+      return { success: false, message: 'The staff list changed while removing. Refresh and try again.' };
+    var cur = v[row - 1].slice(0, 8);
+    while (cur.length < 8) cur.push('');
+    // The copy is kept first, so the row is never lost even if the delete fails.
+    staffSheet_(ss, STAFF_REMOVED_SHEET, STAFF_HEAD.concat(['Removed At', 'Removed By', 'Reason']))
+      .appendRow(cur.concat([staffNow_(), me, reason]));
+    sh.deleteRow(row);
+    var o = staffRow_(cur);
+    staffLog_(ss, me, 'Remove', o, staffText_(o), '', reason);
+    return { success: true, email: email, changed: true, message: o.name + ' removed. Their row is kept in the ' + STAFF_REMOVED_SHEET + ' tab.' };
+  });
+  if (res && res.success && res.changed) staffAfterChange_([email]);
+  if (reqId && res) cPut('staffreq_' + reqId, res, 1800);
+  return res;
+}
+
 function EMP_add_now() {
   var n = empAddPending_();
   Logger.log(n + ' new row(s) added to ' + EMPLOYEE_SHEET + '. Done so far: ' +

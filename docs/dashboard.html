@@ -473,6 +473,27 @@
     .rep-link-photo { background:#0F766E; color:#fff; }
     .rep-search-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
     .rep-search-bar input { flex:1; min-width:180px; }
+    /* Staff Manage (27 Nov 2026), seen only by STAFF_ADMINS */
+    .st-row { display:flex; align-items:center; gap:12px; padding:11px 4px; border-bottom:1px solid #F3F4F6; flex-wrap:wrap; }
+    .st-main { flex:2 1 220px; min-width:0; }
+    .st-place { flex:1 1 170px; min-width:0; font-size:13px; font-weight:600; color:#374151; }
+    .st-name { font-weight:700; font-size:14px; color:#111827; }
+    .st-sub { font-size:12px; color:#6B7280; margin-top:2px; word-break:break-word; }
+    .st-addl { font-size:11px; font-weight:600; color:#1D4ED8; }
+    .st-you { font-size:10px; font-weight:700; color:#fff; background:#6B7280; border-radius:10px; padding:1px 7px; vertical-align:middle; }
+    .st-acts { display:flex; gap:6px; flex:0 0 auto; }
+    .st-btn { background:#fff; border:1px solid #BFDBFE; color:#1D4ED8; font-size:12px; font-weight:600; border-radius:6px; padding:5px 10px; cursor:pointer; }
+    .st-btn-red { border-color:#FECACA; color:#B91C1C; }
+    .st-checks { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:6px; }
+    .st-checks label { display:flex; align-items:center; gap:6px; font-weight:500; margin:0; padding:7px 9px; border:1px solid #E5E7EB; border-radius:6px; cursor:pointer; font-size:12.5px; }
+    .st-checks input { width:auto; margin:0; }
+    .st-old { font-size:10.5px; color:#B45309; }
+    .st-log-item { font-size:12.5px; padding:8px 2px; border-bottom:1px solid #F3F4F6; color:#374151; }
+    .st-log-item b { color:#111827; }
+    .st-tag { display:inline-block; font-size:10.5px; font-weight:700; border-radius:10px; padding:1px 8px; margin-right:6px; color:#fff; background:#6B7280; }
+    #staff-modal { width:580px; }
+    @media (max-width: 900px) { #staff-modal { width:96vw; } }
+    @media (max-width: 640px) { .st-acts { width:100%; } .st-acts .st-btn { flex:1; padding:8px; } }
     .btn-dl { background:#166534; color:#fff; border:none; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; flex-shrink:0; }
     .btn-dl:hover { background:#15803D; }
     @media(max-width:900px){
@@ -556,6 +577,10 @@
     <div class="nav-item" id="nav-state" onclick="showView('state')" style="display:none;">
       <span class="nav-icon">🗺️</span><span>State Meetings</span>
     </div>
+    <!-- Only for STAFF_ADMINS: shown when getDropdownData says canManageStaff -->
+    <div class="nav-item" id="nav-staff" onclick="showView('staff')" style="display:none;">
+      <span class="nav-icon">👤</span><span>Staff Manage</span>
+    </div>
     <!-- The analytics portal, shown inside the app (see showAnalytics) -->
     <div class="nav-label" style="margin-top:10px;">Analytics</div>
     <div class="nav-item" id="nav-an-overview" onclick="showAnalytics('overview')">
@@ -574,7 +599,7 @@
   </div>
   <div class="sidebar-bottom">
     <button class="btn-logout" onclick="logout()">🚪 Logout</button>
-    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.19 &middot; 17 Nov 2026</div>
+    <div style="text-align:center;font-size:11px;color:#9CA3AF;margin-top:10px;">Version 1.20 &middot; 27 Nov 2026</div>
   </div>
 </div>
 
@@ -787,6 +812,81 @@
     </div>
 
     <!-- Action Modal -->
+    <!-- Staff Manage: add / edit / remove one person -->
+    <div id="staff-overlay" class="modal-overlay" style="display:none;" onclick="stClose()"></div>
+    <div id="staff-modal" class="modal-box" style="display:none;">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title" id="st-m-title">Add Staff</div>
+          <div class="modal-sub"   id="st-m-sub"></div>
+        </div>
+        <button class="modal-close" onclick="stClose()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="st-form">
+          <div class="form-row">
+            <div class="field">
+              <label>Name <span class="req">*</span></label>
+              <input type="text" id="st-f-name" maxlength="80" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Email <span class="req">*</span></label>
+              <input type="text" id="st-f-email" inputmode="email" autocomplete="off" placeholder="name@educategirls.ngo">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Designation <span class="req">*</span></label>
+              <input type="text" id="st-f-desig" list="st-desig-list" maxlength="80" autocomplete="off">
+              <datalist id="st-desig-list"></datalist>
+            </div>
+            <div class="field">
+              <label>Role <span class="req">*</span></label>
+              <select id="st-f-role" onchange="stRoleChanged()">
+                <option value="Field">Field</option>
+                <option value="District">District</option>
+                <option value="State">State</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field full">
+              <label>District <span class="req" id="st-dist-req">*</span></label>
+              <select id="st-f-district" onchange="stDistrictChanged()"></select>
+            </div>
+          </div>
+          <div class="form-row" id="st-blocks-row">
+            <div class="field full">
+              <label>Blocks <span class="req" id="st-block-req">*</span></label>
+              <div id="st-f-blocks" class="st-checks"></div>
+            </div>
+          </div>
+          <div class="form-row" id="st-addl-row" style="display:none;">
+            <div class="field full">
+              <label>Additional Districts <span style="color:#9CA3AF;font-weight:400">(optional)</span></label>
+              <div id="st-f-addl" class="st-checks"></div>
+            </div>
+          </div>
+          <div id="st-f-alert" class="alert alert-error"></div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:6px;flex-wrap:wrap;">
+            <button class="btn-reset" onclick="stClose()">Cancel</button>
+            <button class="btn-submit" id="st-f-save" onclick="stSave()" style="padding:10px 24px;">Save</button>
+          </div>
+        </div>
+        <div id="st-remove" style="display:none;">
+          <p id="st-r-who" style="font-size:14px;margin:0 0 10px;color:#111827;"></p>
+          <p style="font-size:12.5px;color:#6B7280;margin:0 0 14px;">Their sign-in stops at once. Their meetings stay as they are, and their row is kept in the Removed Staff tab of the sheet.</p>
+          <label>Reason <span style="color:#9CA3AF;font-weight:400">(optional)</span></label>
+          <input type="text" id="st-r-reason" maxlength="300" placeholder="e.g. Left the organisation">
+          <div id="st-r-alert" class="alert alert-error" style="margin-top:12px;"></div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;">
+            <button class="btn-reset" onclick="stClose()">Cancel</button>
+            <button class="btn-submit" id="st-r-btn" onclick="stRemove()" style="padding:10px 24px;background:#B91C1C;">🗑 Remove</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="action-overlay" class="modal-overlay" style="display:none;" onclick="closeActionModal()"></div>
     <div id="action-modal" class="modal-box" style="display:none;max-width:500px;">
       <div class="modal-header">
@@ -1111,6 +1211,34 @@
         <div id="sm-content">
           <div class="empty-state"><div class="empty-icon">&#9203;</div><p>Loading...</p></div>
         </div>
+      </div>
+    </div>
+
+    <!-- View: Staff Manage (STAFF_ADMINS only; the server checks every action) -->
+    <div id="view-staff" class="view">
+      <div class="card">
+        <div class="card-title" style="background:#7B1010;">👤 Staff Manage</div>
+        <div class="rep-search-bar">
+          <select id="st-district" onchange="stRender()" style="flex:0 1 190px;padding:8px 10px;font-size:13px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;">
+            <option value="">All Districts</option>
+          </select>
+          <select id="st-role" onchange="stRender()" style="flex:0 1 130px;padding:8px 10px;font-size:13px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;">
+            <option value="">All Roles</option>
+            <option value="Field">Field</option>
+            <option value="District">District</option>
+            <option value="State">State</option>
+          </select>
+          <input type="text" id="st-search" placeholder="Search name, email, block, designation..." oninput="stRender()">
+          <button class="btn-submit" onclick="stOpen('add')" style="padding:9px 18px;font-size:13px;">+ Add Staff</button>
+        </div>
+        <div id="st-count" style="font-size:12px;color:#6B7280;margin-bottom:4px;"></div>
+        <div id="st-content">
+          <div class="empty-state"><div class="empty-icon">&#9203;</div><p>Loading...</p></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="background:#374151;">🕘 Recent Changes</div>
+        <div id="st-log"></div>
       </div>
     </div>
 
@@ -1497,12 +1625,13 @@
     zone:     { title: 'Zone Meetings',     sub: 'All meetings across your zone' },
     state:    { title: 'State Meetings',    sub: 'All meetings across the state' },
     analytics:{ title: 'Analytics',         sub: '' },
-    block:    { title: 'Block Meetings',    sub: 'All meetings in your block' }
+    block:    { title: 'Block Meetings',    sub: 'All meetings in your block' },
+    staff:    { title: 'Staff Manage',      sub: 'Add, transfer or remove staff' }
   };
   function showView(view) {
     // Editing a meeting ends when the officer goes anywhere else.
     if (view !== 'create' && typeof EDIT_MID !== 'undefined' && EDIT_MID) exitEdit();
-    ['create','manage','list','district','zone','state','analytics','block'].forEach(function(v) {
+    ['create','manage','list','district','zone','state','analytics','block','staff'].forEach(function(v) {
       var vEl = document.getElementById('view-' + v);
       var nEl = document.getElementById('nav-'  + v);
       if (vEl) vEl.classList.remove('active');
@@ -1524,6 +1653,7 @@
     if (view === 'block')    { _dmMode = 'block';    loadDistrictMeetings(); }
     if (view === 'zone')     loadZoneMeetings();
     if (view === 'state')    loadStateMeetings();
+    if (view === 'staff')    loadStaff();
     // Close sidebar on mobile after navigation
     document.getElementById('sidebar').classList.remove('mob-open');
     document.getElementById('mob-overlay').classList.remove('mob-open');
@@ -3327,6 +3457,7 @@
       forceLogout('Your access has been revoked. Please contact Admin.');
       return;
     }
+    stShowNav(!!(data && data.canManageStaff));
     _blocksByDistrict = (data && data.blocksByDistrict) || {};
     _metBefore = (data && data.metBefore) || [];
     refreshBlockOptions();
@@ -4685,6 +4816,222 @@
   function v(id)  { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
   function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;') : ''; }
 
+  // ── Staff Manage (27 Nov 2026) ────────────────────────────────
+  // Only for the people listed in STAFF_ADMINS on the server: getDropdownData
+  // says canManageStaff and the menu item appears; for everyone else nothing
+  // here ever runs. The server checks every action again. Add, transfer or
+  // change post/role, remove; nobody changes their own row. Each save carries
+  // a reqId and a lost reply is asked again with the same one, so a repeat
+  // never makes a second change.
+  var _st = { data: null, mode: 'add', cur: null, reqId: '', busy: false };
+  var ST_ROLE_COLOR = { State: '#10B981', District: '#3B82F6', Field: '#F59E0B' };
+  function stShowNav(on) { var n = document.getElementById('nav-staff'); if (n) n.style.display = on ? '' : 'none'; }
+  function stA(s) { return esc(s).replace(/"/g, '&quot;'); }
+  function stSplit(v) {
+    var out = [];
+    (Array.isArray(v) ? v : String(v || '').split(/[,;]/)).forEach(function(x) {
+      var t = String(x || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      if (t && out.indexOf(t) === -1) out.push(t);
+    });
+    return out;
+  }
+  function stChecked(id) {
+    return Array.prototype.map.call(document.querySelectorAll('#' + id + ' input:checked'), function(i) { return i.value; });
+  }
+  function loadStaff() {
+    var box = document.getElementById('st-content');
+    if (!_st.data) box.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9203;</div><p>Loading...</p></div>';
+    gasFetch('staffList', {}, function(res) {
+      if (!res || !res.success) {
+        if (res && res.message === 'FORBIDDEN') { stShowNav(false); showView('create'); showToast('Staff Manage is not available for your login.', 6000); return; }
+        box.innerHTML = '<div class="empty-state"><p>' + esc((res && res.message) || 'Could not load the staff list.') + '</p></div>';
+        return;
+      }
+      _st.data = res;
+      stFillFilters(); stRender(); stRenderLog();
+    }, function(e) {
+      box.innerHTML = '<div class="empty-state"><p>' + esc(gasErrText(e)) + '</p></div>';
+    });
+  }
+  function stDistricts() { return Object.keys((_st.data && _st.data.districts) || {}).sort(); }
+  function stFillFilters() {
+    var sel = document.getElementById('st-district'), keep = sel.value;
+    sel.innerHTML = '<option value="">All Districts</option><option value="-">State level</option>' +
+      stDistricts().map(function(d) { return '<option value="' + stA(d) + '">' + esc(d) + '</option>'; }).join('');
+    sel.value = keep;
+  }
+  function stRows() {
+    var d = document.getElementById('st-district').value, r = document.getElementById('st-role').value;
+    var q = (document.getElementById('st-search').value || '').trim().toLowerCase();
+    return _st.data.staff.map(function(s, i) { s._i = i; return s; }).filter(function(s) {
+      var dist = (s.district || '').toUpperCase();
+      if (d === '-' && dist) return false;
+      if (d && d !== '-' && dist !== d && stSplit(s.addl).indexOf(d) === -1) return false;
+      if (r && s.role !== r) return false;
+      if (q && [s.name, s.email, s.designation, s.block, s.district, s.addl].join(' ').toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    }).sort(function(a, b) { return (a.district || '').localeCompare(b.district || '') || (a.name || '').localeCompare(b.name || ''); });
+  }
+  function stRender() {
+    if (!_st.data) return;
+    var rows = stRows(), me = (_st.data.me || '').toLowerCase();
+    document.getElementById('st-count').textContent = rows.length + ' of ' + _st.data.staff.length + ' people';
+    if (!rows.length) {
+      document.getElementById('st-content').innerHTML = '<div class="empty-state"><p>No one matches.</p></div>';
+      return;
+    }
+    document.getElementById('st-content').innerHTML = rows.map(function(s) {
+      var mine = (s.email || '').toLowerCase() === me;
+      return '<div class="st-row">' +
+        '<div class="st-main"><div class="st-name">' + esc(s.name) + (mine ? ' <span class="st-you">You</span>' : '') + '</div>' +
+          '<div class="st-sub">' + esc(s.designation) + ' &middot; ' + esc(s.email) + '</div></div>' +
+        '<div class="st-place"><div>' + esc(s.district || 'State level') + (s.addl ? ' <span class="st-addl">+ ' + esc(s.addl) + '</span>' : '') + '</div>' +
+          '<div class="st-sub">' + esc(s.block || '-') + '</div></div>' +
+        '<span class="badge" style="background:' + (ST_ROLE_COLOR[s.role] || '#6B7280') + ';color:#fff;">' + esc(s.role) + '</span>' +
+        '<div class="st-acts">' + (mine ? '' :
+          '<button class="st-btn" onclick="stOpen(\'edit\',' + s._i + ')">✏️ Edit</button>' +
+          '<button class="st-btn st-btn-red" onclick="stOpenRemove(' + s._i + ')">🗑 Remove</button>') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+  function stRenderLog() {
+    var log = (_st.data && _st.data.log) || [], el = document.getElementById('st-log');
+    var col = { Add: '#16A34A', Edit: '#2563EB', Transfer: '#7C3AED', Remove: '#B91C1C' };
+    if (!log.length) { el.innerHTML = '<div class="empty-state" style="padding:20px;"><p>No changes made here yet.</p></div>'; return; }
+    // [When, By, Action, Email, Name, Before, After, Note]
+    el.innerHTML = log.map(function(r) {
+      var change = r[5] && r[6] ? esc(r[5]) + ' &rarr; ' + esc(r[6]) : esc(r[6] || r[5] || '');
+      return '<div class="st-log-item"><span class="st-tag" style="background:' + (col[r[2]] || '#6B7280') + ';">' + esc(r[2]) + '</span>' +
+        '<b>' + esc(r[4]) + '</b> &middot; ' + change + (r[7] ? ' &middot; ' + esc(r[7]) : '') +
+        '<div class="st-sub">' + esc(r[0]) + ' &middot; ' + esc(r[1]) + '</div></div>';
+    }).join('');
+  }
+  function stModal(show, part) {
+    document.getElementById('staff-overlay').style.display = show ? 'block' : 'none';
+    document.getElementById('staff-modal').style.display   = show ? 'flex'  : 'none';
+    document.getElementById('st-form').style.display   = part === 'form'   ? '' : 'none';
+    document.getElementById('st-remove').style.display = part === 'remove' ? '' : 'none';
+    ['st-f-alert', 'st-r-alert'].forEach(function(id) { var a = document.getElementById(id); a.classList.remove('show'); a.textContent = ''; });
+  }
+  function stClose() { if (!_st.busy) stModal(false); }
+  function stNewReq() { return 'st' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function stOpen(mode, i) {
+    if (!_st.data) return;
+    _st.mode = mode === 'edit' ? 'edit' : 'add';
+    var s = _st.mode === 'edit' ? _st.data.staff[i] : { name: '', email: '', designation: '', role: 'Field', district: '', block: '', addl: '' };
+    if (!s) return;
+    _st.cur = s; _st.reqId = stNewReq();
+    document.getElementById('st-m-title').textContent = _st.mode === 'edit' ? 'Edit Staff' : 'Add Staff';
+    document.getElementById('st-m-sub').textContent   = _st.mode === 'edit' ? s.name + ' · ' + s.email : 'They can sign in as soon as this is saved.';
+    document.getElementById('st-f-name').value  = s.name || '';
+    var em = document.getElementById('st-f-email');
+    em.value = s.email || ''; em.readOnly = _st.mode === 'edit'; em.style.background = _st.mode === 'edit' ? '#F3F4F6' : '';
+    document.getElementById('st-f-desig').value = s.designation || '';
+    var seen = {};
+    document.getElementById('st-desig-list').innerHTML = _st.data.staff.map(function(x) { return x.designation; })
+      .filter(function(d) { if (!d || seen[d]) return false; seen[d] = 1; return true; }).sort()
+      .map(function(d) { return '<option value="' + stA(d) + '">'; }).join('');
+    document.getElementById('st-f-role').value = ST_ROLE_COLOR[s.role] ? s.role : 'Field';
+    var ds = document.getElementById('st-f-district'), cur = (s.district || '').toUpperCase();
+    ds.innerHTML = '<option value="">- Select District -</option>' +
+      stDistricts().map(function(d) { return '<option value="' + stA(d) + '">' + esc(d) + '</option>'; }).join('');
+    ds.value = cur;
+    stDistrictChanged(s.block || '');
+    var have = stSplit(s.addl);
+    var extra = have.filter(function(d) { return !_st.data.districts[d]; });   // an old spelling the person already has
+    document.getElementById('st-f-addl').innerHTML = stDistricts().concat(extra).map(function(d) {
+      return '<label><input type="checkbox" value="' + stA(d) + '"' + (have.indexOf(d) !== -1 ? ' checked' : '') + '> ' + esc(d) + '</label>';
+    }).join('');
+    stRoleChanged();
+    stModal(true, 'form');
+    if (_st.mode === 'add') document.getElementById('st-f-name').focus();
+  }
+  function stDistrictChanged(keepBlocks) {
+    var d = document.getElementById('st-f-district').value, box = document.getElementById('st-f-blocks');
+    if (!d) { box.innerHTML = '<div class="st-sub">Pick a district first.</div>'; return; }
+    var official = ((_st.data.districts || {})[d] || []).slice();
+    var have = typeof keepBlocks === 'string' ? stSplit(keepBlocks) : stChecked('st-f-blocks');
+    // A block the person already has under an old name is shown too, so editing
+    // their post does not force a block change; only in their current district.
+    var legacy = (_st.cur && d === (_st.cur.district || '').toUpperCase())
+      ? stSplit(_st.cur.block).filter(function(b) { return official.indexOf(b) === -1; }) : [];
+    box.innerHTML = official.concat(legacy).map(function(b) {
+      return '<label><input type="checkbox" value="' + stA(b) + '"' + (have.indexOf(b) !== -1 ? ' checked' : '') + '> ' + esc(b) +
+        (legacy.indexOf(b) !== -1 ? ' <span class="st-old">(old name)</span>' : '') + '</label>';
+    }).join('');
+  }
+  function stRoleChanged() {
+    var r = document.getElementById('st-f-role').value;
+    document.getElementById('st-dist-req').style.display  = r === 'State' ? 'none' : '';
+    document.getElementById('st-block-req').style.display = r === 'Field' ? '' : 'none';
+    document.getElementById('st-addl-row').style.display  = r === 'District' ? '' : 'none';
+  }
+  function stAlert(id, msg) { var a = document.getElementById(id); a.textContent = msg; a.classList.add('show'); }
+  // A lost reply is asked again with the same reqId; the server answers a repeat with its first answer.
+  function stPost(action, body, done) {
+    var tries = 0;
+    (function go() {
+      gasPost(action, body, function(res) { done(res || { success: false, message: 'No answer from the server.' }); }, function() {
+        if (++tries <= 2) { setTimeout(go, 1500); return; }
+        done({ success: false, message: 'Could not confirm. Close this and refresh the list to see whether it went through.' });
+      });
+    })();
+  }
+  function stBusy(btnId, on, label) {
+    _st.busy = on;
+    var b = document.getElementById(btnId);
+    if (on) { b.dataset.label = b.textContent; b.textContent = label; } else if (b.dataset.label) { b.textContent = b.dataset.label; }
+    b.disabled = on;
+  }
+  function stSave() {
+    if (_st.busy) return;
+    var role = document.getElementById('st-f-role').value;
+    var rec = {
+      name:        document.getElementById('st-f-name').value.trim(),
+      email:       document.getElementById('st-f-email').value.trim().toLowerCase(),
+      designation: document.getElementById('st-f-desig').value.trim(),
+      role:        role,
+      district:    document.getElementById('st-f-district').value,
+      blocks:      document.getElementById('st-f-district').value ? stChecked('st-f-blocks') : [],
+      addl:        role === 'District' ? stChecked('st-f-addl') : []
+    };
+    var bad = !rec.name ? 'Name is required.'
+      : !/^[^@\s]+@educategirls\.ngo$/.test(rec.email) ? 'Email must be an @educategirls.ngo address.'
+      : !rec.designation ? 'Designation is required.'
+      : (!rec.district && role !== 'State') ? 'Pick a district.'
+      : (role === 'Field' && !rec.blocks.length) ? 'Pick at least one block.' : '';
+    if (bad) { stAlert('st-f-alert', bad); return; }
+    stBusy('st-f-save', true, 'Saving...');
+    stPost('staffSave', { mode: _st.mode, origEmail: _st.mode === 'edit' ? _st.cur.email : '', rec: rec, reqId: _st.reqId }, function(res) {
+      stBusy('st-f-save', false);
+      if (res.success) { stModal(false); showToast(res.message || 'Saved.', 7000); loadStaff(); return; }
+      if (res.message === 'FORBIDDEN') { stModal(false); stShowNav(false); showView('create'); return; }
+      _st.reqId = stNewReq();   // a refused save may be corrected and sent again as a new request
+      stAlert('st-f-alert', res.message || 'Not saved.');
+    });
+  }
+  function stOpenRemove(i) {
+    var s = _st.data && _st.data.staff[i];
+    if (!s) return;
+    _st.cur = s; _st.reqId = stNewReq();
+    document.getElementById('st-m-title').textContent = 'Remove Staff';
+    document.getElementById('st-m-sub').textContent   = s.email;
+    document.getElementById('st-r-who').innerHTML = 'Remove <b>' + esc(s.name) + '</b> (' + esc(s.designation) + ', ' + esc(s.district || 'State level') + ')?';
+    document.getElementById('st-r-reason').value = '';
+    stModal(true, 'remove');
+  }
+  function stRemove() {
+    if (_st.busy || !_st.cur) return;
+    stBusy('st-r-btn', true, 'Removing...');
+    stPost('staffRemove', { email: _st.cur.email, reason: document.getElementById('st-r-reason').value.trim(), reqId: _st.reqId }, function(res) {
+      stBusy('st-r-btn', false);
+      if (res.success) { stModal(false); showToast(res.message || 'Removed.', 7000); loadStaff(); return; }
+      if (res.message === 'FORBIDDEN') { stModal(false); stShowNav(false); showView('create'); return; }
+      _st.reqId = stNewReq();
+      stAlert('st-r-alert', res.message || 'Not removed.');
+    });
+  }
+
   // Parse "15 Apr 2026" → timestamp  (also handles legacy DD-MM-YYYY)
   var _MON = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
   function toTs(d) {
@@ -4864,6 +5211,36 @@
     'Plan Meeting': 'बैठक नियोजित करें',
     'Manage Meetings': 'बैठकों का प्रबंधन',
     'My Meetings': 'मेरी बैठकें',
+    // Staff Manage (27 Nov 2026)
+    'Staff Manage': 'स्टाफ़ प्रबंधन',
+    'Add, transfer or remove staff': 'स्टाफ़ जोड़ें, स्थानांतरित करें या हटाएँ',
+    'All Roles': 'सभी भूमिकाएँ',
+    'Search name, email, block, designation...': 'नाम, ईमेल, ब्लॉक या पद खोजें...',
+    'Add Staff': 'स्टाफ़ जोड़ें',
+    'Edit Staff': 'स्टाफ़ बदलें',
+    'Remove Staff': 'स्टाफ़ हटाएँ',
+    'Recent Changes': 'हाल के बदलाव',
+    'They can sign in as soon as this is saved.': 'सेव होते ही वे साइन इन कर सकेंगे।',
+    'Name': 'नाम',
+    'Email': 'ईमेल',
+    'Designation': 'पद',
+    'Role': 'भूमिका',
+    'Blocks': 'ब्लॉक',
+    'Additional Districts': 'अतिरिक्त जिले',
+    'Save': 'सेव करें',
+    'Edit': 'बदलें',
+    'Remove': 'हटाएँ',
+    'Removing...': 'हटाया जा रहा है...',
+    'State level': 'राज्य स्तर',
+    'You': 'आप',
+    'Pick a district first.': 'पहले जिला चुनें।',
+    '(old name)': '(पुराना नाम)',
+    'No one matches.': 'कोई नहीं मिला।',
+    'No changes made here yet.': 'यहाँ से अभी कोई बदलाव नहीं हुआ।',
+    'Their sign-in stops at once. Their meetings stay as they are, and their row is kept in the Removed Staff tab of the sheet.':
+      'उनका साइन इन तुरंत बंद हो जाएगा। उनकी बैठकें जैसी हैं वैसी रहेंगी, और उनकी पंक्ति शीट के Removed Staff टैब में रखी जाएगी।',
+    'e.g. Left the organisation': 'जैसे: संस्था छोड़ दी',
+    'Staff Manage is not available for your login.': 'आपके लॉगिन के लिए स्टाफ़ प्रबंधन उपलब्ध नहीं है।',
     'District Meetings': 'जिले की बैठकें',
     'Zone Meetings': 'ज़ोन की बैठकें',
     'State Meetings': 'राज्य की बैठकें',
